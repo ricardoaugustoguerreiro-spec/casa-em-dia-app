@@ -281,9 +281,15 @@ window.Alpine = Alpine;
 Alpine.start();
 
 function traduzErroAuth(msg) {
-  if (!msg) return "Erro ao entrar.";
+  if (!msg) return "Erro ao entrar. Tente de novo.";
   if (msg.includes("Invalid login credentials")) return "E-mail ou senha incorretos.";
   if (msg.includes("User already registered")) return "Esse e-mail já tem cadastro. Use 'Entrar'.";
   if (msg.includes("Password should be at least")) return "Senha precisa ter pelo menos 6 caracteres.";
-  return msg;
+  if (msg.includes("Email not confirmed")) return "Este e-mail ainda não foi confirmado. Fale com o administrador do app.";
+  if (msg.includes("Signups not allowed")) return "Cadastro de novas contas está desativado no momento. Fale com o administrador do app.";
+  if (msg.includes("Unable to validate email address")) return "Esse e-mail não parece válido. Confira e tente de novo.";
+  if (msg.includes("Email rate limit exceeded")) return "Muitas tentativas em pouco tempo. Espere alguns minutos e tente de novo.";
+  if (msg.includes("User not found")) return "Não encontramos uma conta com esse e-mail.";
+  if (msg.includes("Network")) return "Falha de conexão. Confira sua internet e tente de novo.";
+  return "Erro ao entrar: " + msg;
 }
