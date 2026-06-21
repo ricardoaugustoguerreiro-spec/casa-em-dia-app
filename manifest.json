@@ -1,0 +1,12 @@
+{
+  "name": "Casa em Dia",
+  "short_name": "Casa em Dia",
+  "description": "Controle financeiro e calendário do casal",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fff7ed",
+  "theme_color": "#dc6b4f",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

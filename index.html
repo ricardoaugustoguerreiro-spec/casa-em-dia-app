@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Casa em Dia</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icons/icon.svg" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#dc6b4f" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script type="module" src="js/app.js"></script>
+<style>
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
+  [x-cloak] { display: none !important; }
+</style>
+</head>
+<body class="bg-gradient-to-br from-orange-50 to-rose-50 min-h-screen" x-data="appState">
+
+  <!-- LOADING -->
+  <div x-show="view === 'loading'" class="flex items-center justify-center min-h-screen text-gray-400">
+    Carregando...
+  </div>
+
+  <!-- LOGIN / CADASTRO -->
+  <div x-show="view === 'login'" x-cloak class="flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-sm">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-400 flex items-center justify-center text-white text-2xl">❤</div>
+        <h1 class="text-2xl font-bold">Casa em Dia</h1>
+        <p class="text-gray-500 text-sm">Controle financeiro e calendário do casal.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm p-6">
+        <div class="flex bg-gray-100 rounded-full p-1 mb-5">
+          <button @click="authMode='entrar'" :class="authMode==='entrar' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Entrar</button>
+          <button @click="authMode='criar'" :class="authMode==='criar' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Criar conta</button>
+        </div>
+
+        <form @submit.prevent="submitAuth">
+          <label class="block text-sm mb-1">E-mail</label>
+          <input type="email" x-model="email" required class="w-full mb-4 rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300" />
+
+          <label class="block text-sm mb-1">Senha</label>
+          <div class="relative mb-4">
+            <input :type="showPassword ? 'text' : 'password'" x-model="password" required minlength="6" class="w-full rounded-xl border border-gray-200 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-rose-300" />
+            <button type="button" @click="togglePassword" class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600" :aria-label="showPassword ? 'Ocultar senha' : 'Mostrar senha'">
+              <svg x-show="!showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg x-show="showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.94 10.94 0 0112 19c-7 0-11-7-11-7a18.5 18.5 0 014.22-5.06M9.9 4.24A10.94 10.94 0 0112 4c7 0 11 7 11 7a18.5 18.5 0 01-2.16 3.19M14.12 14.12a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </div>
+
+          <p x-show="authError" x-text="authError" class="text-sm text-red-600 mb-3"></p>
+
+          <button type="submit" :disabled="authLoading" class="w-full bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white rounded-xl py-2.5 font-medium transition">
+            <span x-show="!authLoading" x-text="authMode==='entrar' ? 'Entrar' : 'Criar conta'"></span>
+            <span x-show="authLoading">Aguarde...</span>
+          </button>
+        </form>
+      </div>
+
+      <p class="text-center text-xs text-gray-400 mt-4">Nunca pedimos senha do seu banco. Importação é só por arquivo CSV/OFX.</p>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div x-show="view === 'app'" x-cloak class="max-w-5xl mx-auto p-3 sm:p-4 pb-16">
+    <header class="flex flex-wrap items-center justify-between gap-2 py-4">
+      <div>
+        <h1 class="text-xl font-bold">Casa em Dia</h1>
+        <p class="text-sm text-gray-500" x-text="profile ? ('Olá, ' + profile.display_name + (isAdmin ? ' (admin)' : '')) : ''"></p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <input type="file" accept="application/json" class="hidden" x-ref="inputBackup" @change="importarBackup($event)" />
+        <button @click="exportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Exportar backup</button>
+        <button x-show="isAdmin" @click="abrirImportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Importar backup</button>
+        <button @click="logout" class="text-sm text-gray-500 hover:text-rose-600">Sair</button>
+      </div>
+    </header>
+
+    <div x-show="loadingData" class="text-center text-gray-400 py-10">Carregando dados...</div>
+
+    <template x-if="!loadingData">
+      <div>
+        <!-- CARDS ANIMADOS -->
+        <section class="mb-8">
+          <h2 class="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Cartões e contas</h2>
+          <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">
+            <template x-for="c in cardTotals" :key="c.nome">
+              <div class="rounded-2xl p-4 bg-white shadow-sm" :data-card-value="c.total">
+                <p class="text-xs text-gray-500 mb-1" x-text="c.nome"></p>
+                <p class="text-lg font-semibold valor-animado">R$ 0</p>
+              </div>
+            </template>
+            <div class="rounded-2xl p-4 bg-rose-50 shadow-sm" :data-card-value="grandTotalCards">
+              <p class="text-xs text-rose-600 mb-1">Total cartões (conjunto)</p>
+              <p class="text-lg font-semibold text-rose-700 valor-animado">R$ 0</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">
+            Cartões oficiais da família: <span x-text="$root ? '' : ''"></span>
+            Itaú Ricardo, Itaú Jéssica, Itaú Pão de Açúcar, Nubank, Porto (Ricardo) — todo gasto de cartão é conjunto, independente de quem usou.
+          </p>
+        </section>
+
+        <!-- CONTAS FIXAS -->
+        <section class="mb-8">
+          <h2 class="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Contas fixas</h2>
+          <div class="bg-white rounded-2xl shadow-sm divide-y">
+            <template x-for="p in billPayments.slice(0, 12)" :key="p.id">
+              <div class="flex items-center justify-between gap-2 px-4 py-3">
+                <div class="min-w-0">
+                  <p class="font-medium truncate" x-text="billName(p.fixed_bill_id)"></p>
+                  <p class="text-xs text-gray-400" x-text="'Vencimento: ' + fmtData(p.due_date)"></p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <div class="text-right">
+                    <p class="font-medium" x-text="fmtMoeda(p.amount)"></p>
+                    <span class="text-xs px-2 py-0.5 rounded-full" :class="statusBadgeClass(p.status)" x-text="p.status"></span>
+                  </div>
+                  <button @click="excluirPagamento(p.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+
+        <!-- TRANSAÇÕES -->
+        <section>
+          <h2 class="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Últimos lançamentos</h2>
+          <div class="bg-white rounded-2xl shadow-sm divide-y">
+            <template x-for="t in transactions.slice(0, 15)" :key="t.id">
+              <div class="flex items-center justify-between gap-2 px-4 py-3">
+                <div class="min-w-0">
+                  <p class="font-medium truncate" x-text="t.description"></p>
+                  <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <p class="font-medium" x-text="fmtMoeda(t.amount)"></p>
+                  <button @click="excluirTransacao(t.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+      </div>
+    </template>
+  </div>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
+    }
+  </script>
+</body>
+</html>
