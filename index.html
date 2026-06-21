@@ -6,8 +6,11 @@
 <title>Casa em Dia</title>
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icons/icon.svg" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Casa em Dia" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#dc6b4f" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -41,11 +44,11 @@
 
         <form @submit.prevent="submitAuth">
           <label class="block text-sm mb-1">E-mail</label>
-          <input type="email" x-model="email" required class="w-full mb-4 rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300" />
+          <input type="email" x-model="email" required class="w-full mb-4 rounded-xl text-base border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300" />
 
           <label class="block text-sm mb-1">Senha</label>
           <div class="relative mb-4">
-            <input :type="showPassword ? 'text' : 'password'" x-model="password" required minlength="6" class="w-full rounded-xl border border-gray-200 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-rose-300" />
+            <input :type="showPassword ? 'text' : 'password'" x-model="password" required minlength="6" class="w-full rounded-xl border border-gray-200 px-3 py-2 pr-10 text-base focus:outline-none focus:ring-2 focus:ring-rose-300" />
             <button type="button" @click="togglePassword" class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600" :aria-label="showPassword ? 'Ocultar senha' : 'Mostrar senha'">
               <svg x-show="!showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
               <svg x-show="showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.94 10.94 0 0112 19c-7 0-11-7-11-7a18.5 18.5 0 014.22-5.06M9.9 4.24A10.94 10.94 0 0112 4c7 0 11 7 11 7a18.5 18.5 0 01-2.16 3.19M14.12 14.12a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
