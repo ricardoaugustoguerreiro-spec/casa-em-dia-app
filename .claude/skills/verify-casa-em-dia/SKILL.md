@@ -87,11 +87,13 @@ E revise `sw.js`: `index.html` e qualquer `.js`/`.html` (código que muda) DEVEM
 ### 10. Alpine.js: nunca depender de ordem entre `<script defer>` e `<script type="module">`
 O app deve importar o Alpine via ESM (`import Alpine from "https://esm.sh/alpinejs@..."`) dentro do próprio `js/app.js`, registrar `Alpine.data(...)` e só então chamar `Alpine.start()` manualmente — tudo no mesmo módulo, em sequência garantida. Se algum dia aparecer uma tag `<script src=".../alpinejs/...">` solta no `index.html` de novo, é regressão da lição #5 — o bug "appState is not defined" vai voltar.
 
-### 11. Confirmação de e-mail do Supabase Auth está desligada (causa do bug "Email not confirmed" — lição #6)
-Antes de orientar qualquer cadastro novo no app, ou sempre que um projeto Supabase novo for criado:
-- Pergunte/confirme explicitamente, não assuma: "Confirm email" está desligado em Authentication → Providers → Email?
-- Se um usuário relatar erro de login com mensagem "Email not confirmed", a causa É essa configuração (não é bug de código) — a correção é desligar o toggle e rodar `delete from auth.users where email = '...'` no SQL Editor pra liberar o cadastro que ficou travado.
-- Esse projeto não tem servidor de e-mail (SMTP) configurado, então qualquer fluxo que dependa de e-mail chegar (confirmação, recuperação de senha) vai travar do mesmo jeito até isso ser revisado.
+### 11. Checklist único de configuração de Authentication (causa das lições #6 e #7 — duas travas seguidas)
+Toda vez que um projeto Supabase novo for criado (este ou outro futuro), confirmar **de uma vez só**, não uma a uma conforme o usuário tropeça:
+- "Confirm email" desligado em Authentication → Providers → Email (senão: erro "Email not confirmed" — lição #6)
+- "Allow new users to sign up" ligado em Authentication → Sign In / Up (senão: erro "Signups not allowed for this instance" — lição #7)
+- Qualquer outra trava de Auth visível na mesma tela, revisar de passagem já que está lá
+- Lembrar que este projeto NÃO tem servidor de e-mail (SMTP) configurado — qualquer fluxo que dependa de e-mail chegar (confirmação, recuperação de senha) vai travar até isso ser revisado
+- Se um usuário relatar qualquer mensagem de erro ao logar/cadastrar que não reconheço, a primeira suspeita deve ser configuração do painel de Auth, não bug de código — esse projeto já teve 2 casos assim em sequência.
 
 ## Depois de verificar: o relatório
 
