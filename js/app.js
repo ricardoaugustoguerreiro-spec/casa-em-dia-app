@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient.js";
+import Alpine from "https://esm.sh/alpinejs@3.14.3";
 
 export const CARTOES_FAMILIA = [
   "Itaú Ricardo",
@@ -20,8 +21,7 @@ function animateCount(el, target, duration = 700) {
   requestAnimationFrame(tick);
 }
 
-document.addEventListener("alpine:init", () => {
-  Alpine.data("appState", () => ({
+Alpine.data("appState", () => ({
     // auth
     view: "loading", // loading | login | app
     authMode: "entrar", // entrar | criar
@@ -255,8 +255,14 @@ document.addEventListener("alpine:init", () => {
     billName(fixedBillId) {
       return this.fixedBills.find((b) => b.id === fixedBillId)?.name || "—";
     },
-  }));
-});
+  })
+);
+
+// Importamos o Alpine como módulo (em vez de tag <script defer>) justamente pra
+// garantir que Alpine.data("appState", ...) acima SEMPRE rode antes de Alpine.start().
+// Eliminamos assim a corrida de carregamento que causava "appState is not defined".
+window.Alpine = Alpine;
+Alpine.start();
 
 function traduzErroAuth(msg) {
   if (!msg) return "Erro ao entrar.";

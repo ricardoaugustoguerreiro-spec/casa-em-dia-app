@@ -73,6 +73,20 @@ Se houver navegador disponível via Chrome MCP/computer-use, abra a URL pública
 - Console do navegador sem erros vermelhos (`mcp__Claude_in_Chrome__read_console_messages` se disponível)
 - Login ou cadastro completa e mostra o dashboard
 
+### 9. O service worker não pode mascarar uma versão antiga (causa do bug mais sério até agora — lição #5)
+Antes de confiar em QUALQUER teste (local ou em produção), limpe o estado anterior do navegador:
+```js
+// rodar via mcp__Claude_in_Chrome__javascript_tool antes de testar
+const regs = await navigator.serviceWorker.getRegistrations();
+for (const r of regs) await r.unregister();
+const keys = await caches.keys();
+for (const k of keys) await caches.delete(k);
+```
+E revise `sw.js`: `index.html` e qualquer `.js`/`.html` (código que muda) DEVEM usar estratégia **network-first** (busca a rede, só cai pro cache se offline). Cache-first só é aceitável pra ícones/manifest, que praticamente nunca mudam. Se algum dia `sw.js` voltar a ter `index.html`/`*.js` numa lista cache-first, isso é regressão da lição #5 — corrigir imediatamente.
+
+### 10. Alpine.js: nunca depender de ordem entre `<script defer>` e `<script type="module">`
+O app deve importar o Alpine via ESM (`import Alpine from "https://esm.sh/alpinejs@..."`) dentro do próprio `js/app.js`, registrar `Alpine.data(...)` e só então chamar `Alpine.start()` manualmente — tudo no mesmo módulo, em sequência garantida. Se algum dia aparecer uma tag `<script src=".../alpinejs/...">` solta no `index.html` de novo, é regressão da lição #5 — o bug "appState is not defined" vai voltar.
+
 ## Depois de verificar: o relatório
 
 Produza um relatório curto pro usuário com este formato:
