@@ -30,6 +30,7 @@ Alpine.data("appState", () => ({
     showPassword: false,
     authError: "",
     authLoading: false,
+    emailLocked: false,
 
     // app data
     profile: null,
@@ -43,6 +44,11 @@ Alpine.data("appState", () => ({
     loadingData: true,
 
     async init() {
+      const lembrado = localStorage.getItem("casa-em-dia:lastEmail");
+      if (lembrado) {
+        this.email = lembrado;
+        this.emailLocked = true;
+      }
       const { data } = await supabase.auth.getSession();
       if (data.session) {
         await this.loadAfterLogin();
@@ -51,6 +57,8 @@ Alpine.data("appState", () => ({
       }
       supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session && this.view !== "app") {
+          localStorage.setItem("casa-em-dia:lastEmail", session.user.email);
+          this.emailLocked = true;
           await this.loadAfterLogin();
         }
         if (!session) {
@@ -58,6 +66,14 @@ Alpine.data("appState", () => ({
           this.profile = null;
         }
       });
+    },
+
+    trocarDeConta() {
+      localStorage.removeItem("casa-em-dia:lastEmail");
+      this.emailLocked = false;
+      this.email = "";
+      this.password = "";
+      this.authMode = "entrar";
     },
 
     togglePassword() {

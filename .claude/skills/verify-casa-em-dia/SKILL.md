@@ -87,6 +87,12 @@ E revise `sw.js`: `index.html` e qualquer `.js`/`.html` (código que muda) DEVEM
 ### 10. Alpine.js: nunca depender de ordem entre `<script defer>` e `<script type="module">`
 O app deve importar o Alpine via ESM (`import Alpine from "https://esm.sh/alpinejs@..."`) dentro do próprio `js/app.js`, registrar `Alpine.data(...)` e só então chamar `Alpine.start()` manualmente — tudo no mesmo módulo, em sequência garantida. Se algum dia aparecer uma tag `<script src=".../alpinejs/...">` solta no `index.html` de novo, é regressão da lição #5 — o bug "appState is not defined" vai voltar.
 
+### 11. Confirmação de e-mail do Supabase Auth está desligada (causa do bug "Email not confirmed" — lição #6)
+Antes de orientar qualquer cadastro novo no app, ou sempre que um projeto Supabase novo for criado:
+- Pergunte/confirme explicitamente, não assuma: "Confirm email" está desligado em Authentication → Providers → Email?
+- Se um usuário relatar erro de login com mensagem "Email not confirmed", a causa É essa configuração (não é bug de código) — a correção é desligar o toggle e rodar `delete from auth.users where email = '...'` no SQL Editor pra liberar o cadastro que ficou travado.
+- Esse projeto não tem servidor de e-mail (SMTP) configurado, então qualquer fluxo que dependa de e-mail chegar (confirmação, recuperação de senha) vai travar do mesmo jeito até isso ser revisado.
+
 ## Depois de verificar: o relatório
 
 Produza um relatório curto pro usuário com este formato:
