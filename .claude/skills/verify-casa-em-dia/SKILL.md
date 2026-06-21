@@ -104,6 +104,9 @@ ls "/h/Meu Drive/FINANÇAS/QR-code-Casa-em-Dia.png"  # deve existir
 Se a URL do app mudar um dia (novo domínio, novo repositório), **atualize esses dois arquivos também** — eles são a forma como o usuário acessa o app no dia a dia, não só uma mensagem de chat que rola pra cima e se perde.
 Regra geral por trás disso: se um mesmo erro de usuário (caminho errado, link errado, confundir dois arquivos parecidos) se repetir depois de já ter sido explicado uma vez, a resposta certa na segunda vez é mudar o ambiente (criar atalho, renomear arquivo, mover pasta), não só explicar de novo.
 
+### 13. Calendário tem skill própria
+Tudo relacionado a feriados, permissões pessoal×trabalho, conflito de horário, fuso horário e import de prazos do calendário tem checklist e histórico dedicados em `.claude\skills\verify-calendario\` (SKILL.md + lessons.md) — rode essa sub-skill quando o problema for especificamente do módulo de calendário, em vez de tentar cobrir tudo aqui.
+
 ## Depois de verificar: o relatório
 
 Produza um relatório curto pro usuário com este formato:
