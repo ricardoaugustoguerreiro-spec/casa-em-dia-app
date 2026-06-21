@@ -95,6 +95,15 @@ Toda vez que um projeto Supabase novo for criado (este ou outro futuro), confirm
 - Lembrar que este projeto NÃO tem servidor de e-mail (SMTP) configurado — qualquer fluxo que dependa de e-mail chegar (confirmação, recuperação de senha) vai travar até isso ser revisado
 - Se um usuário relatar qualquer mensagem de erro ao logar/cadastrar que não reconheço, a primeira suspeita deve ser configuração do painel de Auth, não bug de código — esse projeto já teve 2 casos assim em sequência.
 
+### 12. Erros de "caminho/link errado" que se repetem precisam de artefato físico, não só de aviso (lição #8)
+Confirme que estes dois arquivos existem e estão corretos na pasta `H:\Meu Drive\FINANÇAS`:
+```bash
+cat "/h/Meu Drive/FINANÇAS/Abrir Casa em Dia.url"   # deve apontar pra URL pública do GitHub Pages
+ls "/h/Meu Drive/FINANÇAS/QR-code-Casa-em-Dia.png"  # deve existir
+```
+Se a URL do app mudar um dia (novo domínio, novo repositório), **atualize esses dois arquivos também** — eles são a forma como o usuário acessa o app no dia a dia, não só uma mensagem de chat que rola pra cima e se perde.
+Regra geral por trás disso: se um mesmo erro de usuário (caminho errado, link errado, confundir dois arquivos parecidos) se repetir depois de já ter sido explicado uma vez, a resposta certa na segunda vez é mudar o ambiente (criar atalho, renomear arquivo, mover pasta), não só explicar de novo.
+
 ## Depois de verificar: o relatório
 
 Produza um relatório curto pro usuário com este formato:
