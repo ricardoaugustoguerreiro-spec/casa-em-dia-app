@@ -99,9 +99,14 @@
       </div>
     </header>
 
+    <div class="flex bg-gray-100 rounded-full p-1 mb-5 max-w-xs">
+      <button @click="abaAtual='financeiro'" :class="abaAtual==='financeiro' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Financeiro</button>
+      <button @click="abaAtual='calendario'" :class="abaAtual==='calendario' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Calendário</button>
+    </div>
+
     <div x-show="loadingData" class="text-center text-gray-400 py-10">Carregando dados...</div>
 
-    <template x-if="!loadingData">
+    <template x-if="!loadingData && abaAtual === 'financeiro'">
       <div>
         <!-- CARDS ANIMADOS -->
         <section class="mb-8">
@@ -167,6 +172,119 @@
             </template>
           </div>
         </section>
+      </div>
+    </template>
+
+    <!-- CALENDÁRIO -->
+    <template x-if="!loadingData && abaAtual === 'calendario'">
+      <div>
+        <input type="file" accept="application/json" class="hidden" x-ref="inputPrazos" @change="importarPrazos($event)" />
+
+        <div class="grid gap-3 mb-6" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+          <div class="rounded-2xl p-3 bg-white shadow-sm">
+            <p class="text-xs text-gray-500 mb-1">Prazos abertos</p>
+            <p class="text-lg font-semibold" x-text="prazosAbertos"></p>
+          </div>
+          <div class="rounded-2xl p-3 bg-white shadow-sm">
+            <p class="text-xs text-gray-500 mb-1">Prazos concluídos</p>
+            <p class="text-lg font-semibold" x-text="prazosConcluidos"></p>
+          </div>
+          <div class="rounded-2xl p-3 bg-red-50 shadow-sm">
+            <p class="text-xs text-red-600 mb-1">Conflitos no ano</p>
+            <p class="text-lg font-semibold text-red-700" x-text="conflitosNoAno"></p>
+          </div>
+          <div x-show="isAdmin" class="rounded-2xl p-3 bg-white shadow-sm flex items-center justify-center">
+            <button @click="abrirImportarPrazos" class="text-xs text-rose-600 font-medium">Importar prazos (JSON)</button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between mb-4">
+          <button @click="anoAnterior" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
+          <p class="font-semibold text-lg" x-text="anoCalendario"></p>
+          <button @click="anoSeguinte" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
+        </div>
+
+        <div class="flex gap-4 text-xs mb-4">
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span>Pessoal</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>Trabalho</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block"></span>Feriado</span>
+        </div>
+
+        <div class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));">
+          <template x-for="(nomeMes, mesIndex) in nomesMeses" :key="mesIndex">
+            <div class="bg-white rounded-2xl shadow-sm p-3">
+              <p class="text-sm font-semibold mb-2" x-text="nomeMes"></p>
+              <div class="grid grid-cols-7 gap-0.5 text-[10px] text-gray-400 mb-1">
+                <span class="text-center">D</span><span class="text-center">S</span><span class="text-center">T</span><span class="text-center">Q</span><span class="text-center">Q</span><span class="text-center">S</span><span class="text-center">S</span>
+              </div>
+              <div class="grid grid-cols-7 gap-0.5">
+                <template x-for="(dia, i) in diasDoMes(mesIndex)" :key="mesIndex + '-' + i">
+                  <button
+                    @click="selecionarDia(dia)"
+                    :disabled="!dia"
+                    class="aspect-square text-[10px] rounded-md flex flex-col items-center justify-center relative"
+                    :class="!dia ? 'invisible' : (diaSelecionado === dia ? 'bg-rose-500 text-white' : temConflito(dia) ? 'bg-red-100' : feriadoDoDia(dia) ? 'bg-gray-100' : 'hover:bg-gray-50')"
+                  >
+                    <span x-text="dia ? parseInt(dia.slice(8,10)) : ''"></span>
+                    <span class="flex gap-0.5 mt-0.5">
+                      <template x-if="dia && eventosDoDia(dia).some(e => e.tipo === 'pessoal')"><span class="w-1 h-1 rounded-full bg-violet-500"></span></template>
+                      <template x-if="dia && eventosDoDia(dia).some(e => e.tipo === 'trabalho')"><span class="w-1 h-1 rounded-full bg-orange-500"></span></template>
+                      <template x-if="dia && feriadoDoDia(dia)"><span class="w-1 h-1 rounded-full bg-gray-400"></span></template>
+                    </span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- PAINEL DO DIA SELECIONADO -->
+        <div x-show="diaSelecionado" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="diaSelecionado = null">
+          <div class="bg-white rounded-2xl shadow-lg w-full max-w-md max-h-[85vh] overflow-y-auto p-5">
+            <div class="flex items-center justify-between mb-3">
+              <p class="font-semibold" x-text="diaSelecionado ? fmtData(diaSelecionado) : ''"></p>
+              <button @click="diaSelecionado = null" class="text-gray-400">✕</button>
+            </div>
+            <p x-show="diaSelecionado && feriadoDoDia(diaSelecionado)" class="text-xs text-gray-500 mb-3" x-text="'Feriado: ' + (diaSelecionado ? feriadoDoDia(diaSelecionado) : '')"></p>
+
+            <div class="space-y-2 mb-4">
+              <template x-for="ev in (diaSelecionado ? eventosDoDia(diaSelecionado) : [])" :key="ev.id">
+                <div class="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium truncate" x-text="ev.title"></p>
+                    <p class="text-xs text-gray-400" x-text="ev.starts_at.slice(11,16) + '–' + ev.ends_at.slice(11,16) + ' · ' + (ev.tipo === 'pessoal' ? 'Pessoal' : 'Trabalho')"></p>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0" x-show="podeEditar(ev)">
+                    <button @click="editarEvento(ev)" class="text-xs text-gray-500">Editar</button>
+                    <button @click="excluirEvento(ev)" class="text-xs text-red-500">Excluir</button>
+                  </div>
+                </div>
+              </template>
+              <p x-show="diaSelecionado && eventosDoDia(diaSelecionado).length === 0" class="text-xs text-gray-400">Nenhum compromisso neste dia.</p>
+            </div>
+
+            <form @submit.prevent="salvarEvento" class="border-t border-gray-100 pt-3 space-y-2">
+              <p class="text-xs font-medium text-gray-500" x-text="eventoEditando ? 'Editar compromisso' : 'Novo compromisso'"></p>
+              <input type="text" placeholder="Título" x-model="formEvento.title" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <div class="flex gap-2">
+                <input type="time" x-model="formEvento.hora_inicio" class="w-1/2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                <input type="time" x-model="formEvento.hora_fim" class="w-1/2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              </div>
+              <select x-show="isAdmin" x-model="formEvento.tipo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <option value="pessoal">Pessoal</option>
+                <option value="trabalho">Trabalho</option>
+              </select>
+              <select x-show="formEvento.tipo === 'trabalho'" x-model="formEvento.status_trabalho" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <option value="aberto">Aberto</option>
+                <option value="concluido">Concluído</option>
+                <option value="atrasado">Atrasado</option>
+              </select>
+              <input type="text" placeholder="Local (opcional)" x-model="formEvento.location" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <textarea placeholder="Notas (opcional)" x-model="formEvento.notes" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" rows="2"></textarea>
+              <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium">Salvar</button>
+            </form>
+          </div>
+        </div>
       </div>
     </template>
   </div>
