@@ -63,9 +63,12 @@ Confirme que a URL é a do projeto atual (`aynteobslozppsjxgheo.supabase.co` na 
 
 ### 7. Campos de formulário não disparam zoom indesejado no iPhone
 ```bash
-grep -n "<input" index.html
+grep -n 'type="text"\|type="email"\|type="password"\|<textarea' index.html
 ```
-Todo `<input>` de texto/senha/email visível ao usuário deve ter `text-base` (16px) ou maior — menor que isso o iOS Safari dá zoom automático ao focar, o que parece "bug" pro usuário.
+Todo `<input>` de texto/senha/email e todo `<textarea>` visível ao usuário deve ter `text-base` (16px) ou maior — menor que isso o iOS Safari dá zoom automático ao focar, o que parece "bug" pro usuário. (Histórico: lição #9 — os campos novos do formulário de evento do calendário, Título/Local/Notas, foram criados com `text-sm` e escaparam dessa checagem porque o grep original só buscava `<input` sem checar a classe nem cobrir `<textarea>`.)
+
+### 7b. Verificar acesso à URL pública direto do ambiente
+Sessões remotas (Claude Code on the web) podem ter a política de rede do sandbox bloqueando `*.github.io` (`curl` retorna 403 com `x-deny-reason: host_not_allowed`, mesmo `github.com` funcionando). Isso **não é o site quebrado** — é só essa sessão não tendo saída de rede liberada pro domínio do GitHub Pages. Nesse caso, registrar a limitação explicitamente pro usuário em vez de reportar como "site fora do ar", e pedir confirmação visual de quem tem acesso real (navegador do usuário, ou uma sessão/ambiente sem essa restrição).
 
 ### 8. Teste funcional mínimo (se possível)
 Se houver navegador disponível via Chrome MCP/computer-use, abra a URL pública (NUNCA `file://`, módulos JS não carregam nesse protocolo) e confira:

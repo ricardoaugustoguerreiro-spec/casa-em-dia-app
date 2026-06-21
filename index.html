@@ -265,7 +265,7 @@
 
             <form @submit.prevent="salvarEvento" class="border-t border-gray-100 pt-3 space-y-2">
               <p class="text-xs font-medium text-gray-500" x-text="eventoEditando ? 'Editar compromisso' : 'Novo compromisso'"></p>
-              <input type="text" placeholder="Título" x-model="formEvento.title" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <input type="text" placeholder="Título" x-model="formEvento.title" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <div class="flex gap-2">
                 <input type="time" x-model="formEvento.hora_inicio" class="w-1/2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
                 <input type="time" x-model="formEvento.hora_fim" class="w-1/2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
@@ -279,8 +279,8 @@
                 <option value="concluido">Concluído</option>
                 <option value="atrasado">Atrasado</option>
               </select>
-              <input type="text" placeholder="Local (opcional)" x-model="formEvento.location" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-              <textarea placeholder="Notas (opcional)" x-model="formEvento.notes" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" rows="2"></textarea>
+              <input type="text" placeholder="Local (opcional)" x-model="formEvento.location" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <textarea placeholder="Notas (opcional)" x-model="formEvento.notes" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" rows="2"></textarea>
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium">Salvar</button>
             </form>
           </div>
