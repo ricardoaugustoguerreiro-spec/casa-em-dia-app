@@ -81,7 +81,8 @@ document.addEventListener("alpine:init", () => {
           });
           if (error) throw error;
         }
-        await this.loadAfterLogin();
+        // não chama loadAfterLogin aqui: o listener onAuthStateChange (em init())
+        // já detecta o login e carrega os dados — evita carregar tudo duas vezes.
       } catch (e) {
         this.authError = traduzErroAuth(e.message);
       } finally {
@@ -150,10 +151,6 @@ document.addEventListener("alpine:init", () => {
           if (valEl) animateCount(valEl, target);
         }, i * 140);
       });
-    },
-
-    nomeDaConta(due) {
-      return due;
     },
 
     async excluirTransacao(id) {
