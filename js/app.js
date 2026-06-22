@@ -55,8 +55,12 @@ Alpine.data("appState", () => ({
     transactions: [],
     cardTotals: [],
     grandTotalCards: 0,
+    balances: [],
     loadingData: true,
-    abaAtual: "financeiro", // financeiro | calendario
+    abaAtual: "financeiro", // financeiro | calendario | ajustes
+    formPerfil: { display_name: "", color: "#7c3aed" },
+    formSaldo: { amount: "", notes: "" },
+    formCategoria: { name: "", kind: "variavel", color: "#64748b" },
 
     // calendário
     events: [],
@@ -196,6 +200,7 @@ Alpine.data("appState", () => ({
           .maybeSingle();
         this.profile = profile;
         this.isAdmin = profile?.role === "admin";
+        if (profile) this.formPerfil = { display_name: profile.display_name, color: profile.color };
       }
       this.view = "app";
       await this.loadDashboard();
@@ -204,7 +209,7 @@ Alpine.data("appState", () => ({
     },
 
     async loadDashboard() {
-      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }] =
+      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }, { data: balances }] =
         await Promise.all([
           supabase.from("categories").select("*").order("name"),
           supabase.from("fixed_bills").select("*").order("due_day"),
@@ -213,6 +218,7 @@ Alpine.data("appState", () => ({
           supabase.from("events").select("*").order("starts_at"),
           supabase.from("dias_menstruacao").select("*").order("data"),
           supabase.from("registros_intimos").select("*").order("data", { ascending: false }),
+          supabase.from("balances").select("*").order("as_of", { ascending: false }),
         ]);
       this.categories = categories || [];
       this.fixedBills = fixedBills || [];
@@ -221,6 +227,7 @@ Alpine.data("appState", () => ({
       this.events = events || [];
       this.diasMenstruacao = diasMenstruacao || [];
       this.registrosIntimos = registrosIntimos || [];
+      this.balances = balances || [];
 
       const byAccount = {};
       for (const t of this.transactions) {
@@ -260,6 +267,106 @@ Alpine.data("appState", () => ({
       const { error } = await supabase.from("bill_payments").delete().eq("id", id);
       if (error) return alert("Erro ao excluir: " + error.message);
       this.billPayments = this.billPayments.filter((p) => p.id !== id);
+    },
+
+    async marcarPago(p) {
+      const novoStatus = p.status === "pago" ? "pendente" : "pago";
+      const payload = { status: novoStatus, paid_at: novoStatus === "pago" ? new Date().toISOString() : null };
+      const { error } = await supabase.from("bill_payments").update(payload).eq("id", p.id);
+      if (error) return alert("Erro ao atualizar: " + error.message);
+      Object.assign(p, payload);
+    },
+
+    // ===================== RESUMO FINANCEIRO (aba Financeiro) =====================
+
+    // contas fixas pagas (bill_payments) também contam como gasto — só transactions
+    // subestimaria o mês, já que Internet/Água/Luz/Casa/IPTU/MEI/Carro vivem só ali.
+    get gastoDoMes() {
+      const mesAtual = this.hojeISO().slice(0, 7);
+      const gastoTransacoes = this.transactions
+        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind !== "renda")
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const gastoContas = this.billPayments
+        .filter((p) => p.status === "pago" && p.paid_at && p.paid_at.slice(0, 7) === mesAtual)
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
+      return gastoTransacoes + gastoContas;
+    },
+
+    get gastoDaSemana() {
+      const hoje = new Date(this.hojeISO() + "T00:00:00");
+      const inicioSemana = new Date(hoje);
+      inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+      const inicioISO = inicioSemana.toISOString().slice(0, 10);
+      const hojeISO = this.hojeISO();
+      const gastoTransacoes = this.transactions
+        .filter((t) => t.date >= inicioISO && t.date <= hojeISO && t.kind !== "renda")
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const gastoContas = this.billPayments
+        .filter((p) => p.status === "pago" && p.paid_at && p.paid_at.slice(0, 10) >= inicioISO && p.paid_at.slice(0, 10) <= hojeISO)
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
+      return gastoTransacoes + gastoContas;
+    },
+
+    get pendenteEmContas() {
+      const pendentes = this.billPayments.filter((p) => p.status === "pendente");
+      return { total: pendentes.reduce((s, p) => s + Number(p.amount || 0), 0), quantidade: pendentes.length };
+    },
+
+    get rendaDoMes() {
+      const mesAtual = this.hojeISO().slice(0, 7);
+      return this.transactions
+        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind === "renda")
+        .reduce((s, t) => s + Number(t.amount), 0);
+    },
+
+    // ===================== AJUSTES (perfil, saldo, categorias) =====================
+
+    async salvarPerfil() {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ display_name: this.formPerfil.display_name, color: this.formPerfil.color })
+        .eq("id", this.uid);
+      if (error) return alert("Erro ao salvar perfil: " + error.message);
+      this.profile = { ...this.profile, ...this.formPerfil };
+      alert("Perfil atualizado.");
+    },
+
+    async salvarSaldo() {
+      if (!this.formSaldo.amount) return alert("Informe o valor do saldo.");
+      const { error } = await supabase.from("balances").insert({
+        user_id: this.uid,
+        amount: Number(this.formSaldo.amount),
+        notes: this.formSaldo.notes || null,
+      });
+      if (error) return alert("Erro ao salvar saldo: " + error.message);
+      this.formSaldo = { amount: "", notes: "" };
+      await this.loadDashboard();
+    },
+
+    async excluirSaldo(id) {
+      const { error } = await supabase.from("balances").delete().eq("id", id);
+      if (error) return alert("Erro ao excluir: " + error.message);
+      this.balances = this.balances.filter((b) => b.id !== id);
+    },
+
+    async salvarCategoria() {
+      if (!this.formCategoria.name) return alert("Dê um nome pra categoria.");
+      const { error } = await supabase.from("categories").insert({
+        name: this.formCategoria.name,
+        kind: this.formCategoria.kind,
+        color: this.formCategoria.color,
+        created_by: this.uid,
+      });
+      if (error) return alert("Erro ao criar categoria: " + error.message);
+      this.formCategoria = { name: "", kind: "variavel", color: "#64748b" };
+      await this.loadDashboard();
+    },
+
+    async excluirCategoria(id) {
+      if (!confirm("Excluir esta categoria? Lançamentos que usam ela continuam, só perdem a categorização.")) return;
+      const { error } = await supabase.from("categories").delete().eq("id", id);
+      if (error) return alert("Erro ao excluir: " + error.message);
+      this.categories = this.categories.filter((c) => c.id !== id);
     },
 
     recalcularCards() {

@@ -87,30 +87,46 @@
   <!-- APP -->
   <div x-show="view === 'app'" x-cloak class="max-w-5xl mx-auto p-3 sm:p-4 pb-16">
     <header class="flex flex-wrap items-center justify-between gap-2 py-4">
-      <div>
-        <h1 class="text-xl font-bold">Casa em Dia</h1>
-        <p class="text-sm text-gray-500" x-text="profile ? ('Olá, ' + profile.display_name + (isAdmin ? ' (admin)' : '')) : ''"></p>
-      </div>
-      <div class="flex items-center gap-3 flex-wrap">
-        <input type="file" accept="application/json" class="hidden" x-ref="inputBackup" @change="importarBackup($event)" />
-        <button x-show="notificacaoStatus === 'default'" @click="ativarNotificacoes" class="text-sm px-3 py-1.5 rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50">🔔 Ativar notificações</button>
-        <span x-show="notificacaoStatus === 'granted'" class="text-xs text-gray-400">🔔 Notificações ativas</span>
-        <span x-show="notificacaoStatus === 'denied'" class="text-xs text-gray-400" title="Pra reativar, mude a permissão de notificações desse site nas configurações do navegador">🔕 Notificações bloqueadas</span>
-        <button @click="exportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Exportar backup</button>
-        <button x-show="isAdmin" @click="abrirImportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Importar backup</button>
-        <button @click="logout" class="text-sm text-gray-500 hover:text-rose-600">Sair</button>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" :style="'background-color: ' + (profile?.color || '#7c3aed')" x-text="(profile?.display_name || 'C').charAt(0).toUpperCase()"></div>
+        <div>
+          <h1 class="text-lg font-bold leading-tight">Casa em Dia</h1>
+          <p class="text-xs text-gray-500" x-text="profile ? (profile.display_name + (isAdmin ? ' (admin)' : '')) : ''"></p>
+        </div>
       </div>
     </header>
 
-    <div class="flex bg-gray-100 rounded-full p-1 mb-5 max-w-xs">
+    <div class="flex bg-gray-100 rounded-full p-1 mb-5 max-w-md">
       <button @click="abaAtual='financeiro'" :class="abaAtual==='financeiro' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Financeiro</button>
       <button @click="abaAtual='calendario'" :class="abaAtual==='calendario' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Calendário</button>
+      <button @click="abaAtual='ajustes'" :class="abaAtual==='ajustes' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Ajustes</button>
     </div>
 
     <div x-show="loadingData" class="text-center text-gray-400 py-10">Carregando dados...</div>
 
     <template x-if="!loadingData && abaAtual === 'financeiro'">
       <div>
+        <!-- RESUMO DO MÊS -->
+        <div class="grid gap-3 mb-8" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+          <div class="rounded-2xl p-4 bg-white shadow-sm">
+            <p class="text-xs text-gray-500 mb-1">Gasto do mês</p>
+            <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDoMes)"></p>
+          </div>
+          <div class="rounded-2xl p-4 bg-white shadow-sm">
+            <p class="text-xs text-gray-500 mb-1">Gasto da semana</p>
+            <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDaSemana)"></p>
+          </div>
+          <div class="rounded-2xl p-4 bg-amber-50 shadow-sm">
+            <p class="text-xs text-amber-700 mb-1">Pendente em contas</p>
+            <p class="text-lg font-semibold text-amber-800" x-text="fmtMoeda(pendenteEmContas.total)"></p>
+            <p class="text-xs text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)'"></p>
+          </div>
+          <div class="rounded-2xl p-4 bg-green-50 shadow-sm">
+            <p class="text-xs text-green-700 mb-1">Renda do mês</p>
+            <p class="text-lg font-semibold text-green-800" x-text="fmtMoeda(rendaDoMes)"></p>
+          </div>
+        </div>
+
         <!-- CARDS ANIMADOS -->
         <section class="mb-8">
           <h2 class="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Cartões e contas</h2>
@@ -146,6 +162,7 @@
                     <p class="font-medium" x-text="fmtMoeda(p.amount)"></p>
                     <span class="text-xs px-2 py-0.5 rounded-full" :class="statusBadgeClass(p.status)" x-text="p.status"></span>
                   </div>
+                  <button @click="marcarPago(p)" class="text-xs px-2 py-1 rounded-full border" :class="p.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="p.status === 'pago' ? 'Desmarcar' : 'Marcar pago'"></button>
                   <button @click="excluirPagamento(p.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
                   </button>
@@ -371,6 +388,105 @@
             </form>
           </div>
         </div>
+      </div>
+    </template>
+
+    <!-- AJUSTES -->
+    <template x-if="!loadingData && abaAtual === 'ajustes'">
+      <div class="space-y-6 max-w-2xl">
+        <!-- PERFIL -->
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-3">Seu perfil</h2>
+          <form @submit.prevent="salvarPerfil" class="flex flex-wrap items-end gap-3">
+            <div class="flex-1 min-w-[160px]">
+              <label class="block text-xs text-gray-500 mb-1">Nome de exibição</label>
+              <input type="text" x-model="formPerfil.display_name" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Cor</label>
+              <input type="color" x-model="formPerfil.color" class="w-14 h-10 rounded-lg border border-gray-200" />
+            </div>
+            <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Salvar</button>
+          </form>
+          <button @click="logout" class="mt-4 text-sm text-gray-500 hover:text-rose-600">↩ Sair da conta</button>
+        </section>
+
+        <!-- NOTIFICAÇÕES -->
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-2">Notificações</h2>
+          <p class="text-xs text-gray-500 mb-3">
+            Status:
+            <span x-show="notificacaoStatus === 'granted'" class="font-medium text-green-700">ativadas</span>
+            <span x-show="notificacaoStatus === 'denied'" class="font-medium text-red-600">bloqueadas pelo navegador</span>
+            <span x-show="notificacaoStatus === 'default'" class="font-medium text-gray-700">não ativadas ainda</span>
+            <span x-show="notificacaoStatus === 'unsupported'" class="font-medium text-gray-700">não suportadas nesse navegador</span>
+          </p>
+          <button x-show="notificacaoStatus === 'default'" @click="ativarNotificacoes" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Ativar notificações</button>
+          <p x-show="notificacaoStatus === 'denied'" class="text-xs text-gray-400">Pra reativar, mude a permissão de notificações desse site nas configurações do navegador/celular.</p>
+          <p class="text-xs text-gray-400 mt-3">
+            Pra receber notificações fora do app, instale o Casa em Dia na tela inicial do celular (no Android/Chrome: menu → "Instalar aplicativo"; no iPhone/Safari: compartilhar → "Adicionar à Tela de Início").
+          </p>
+        </section>
+
+        <!-- SALDO INFORMADO -->
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-gray-700">Saldo informado</h2>
+          </div>
+          <p class="text-xs text-gray-500 mb-3">Histórico de saldo informado manualmente (referência rápida, não é integração bancária).</p>
+          <form @submit.prevent="salvarSaldo" class="flex flex-wrap items-end gap-2 mb-3">
+            <input type="number" step="0.01" placeholder="Valor (R$)" x-model="formSaldo.amount" required class="flex-1 min-w-[120px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
+            <input type="text" placeholder="Nota (opcional)" x-model="formSaldo.notes" class="flex-1 min-w-[140px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
+            <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Informar</button>
+          </form>
+          <div class="divide-y">
+            <template x-for="b in balances.slice(0, 8)" :key="b.id">
+              <div class="flex items-center justify-between gap-2 py-2">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium" x-text="fmtMoeda(b.amount)"></p>
+                  <p class="text-xs text-gray-400" x-text="fmtData(b.as_of) + (b.notes ? ' · ' + b.notes : '')"></p>
+                </div>
+                <button @click="excluirSaldo(b.id)" class="text-xs text-red-500 shrink-0">Excluir</button>
+              </div>
+            </template>
+            <p x-show="balances.length === 0" class="text-xs text-gray-400 py-1">Nenhum saldo informado.</p>
+          </div>
+        </section>
+
+        <!-- CATEGORIAS -->
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-3">Categorias</h2>
+          <form @submit.prevent="salvarCategoria" class="flex flex-wrap items-end gap-2 mb-3">
+            <input type="text" placeholder="Nome da categoria" x-model="formCategoria.name" required class="flex-1 min-w-[140px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
+            <select x-model="formCategoria.kind" class="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              <option value="variavel">Variável</option>
+              <option value="fixa">Fixa</option>
+              <option value="diaria">Diária</option>
+              <option value="renda">Renda</option>
+            </select>
+            <input type="color" x-model="formCategoria.color" class="w-12 h-10 rounded-lg border border-gray-200" />
+            <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Nova</button>
+          </form>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="c in categories" :key="c.id">
+              <span class="text-xs rounded-full px-3 py-1.5 flex items-center gap-1.5" style="background: color-mix(in srgb, var(--cor) 15%, white);" :style="'--cor: ' + c.color">
+                <span class="w-2 h-2 rounded-full" :style="'background-color: ' + c.color"></span>
+                <span x-text="c.name"></span>
+                <button @click="excluirCategoria(c.id)" class="text-gray-400 hover:text-red-500 ml-1">✕</button>
+              </span>
+            </template>
+          </div>
+        </section>
+
+        <!-- BACKUP -->
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-3">Backup</h2>
+          <input type="file" accept="application/json" class="hidden" x-ref="inputBackup" @change="importarBackup($event)" />
+          <div class="flex flex-wrap gap-2">
+            <button @click="exportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Exportar backup</button>
+            <button x-show="isAdmin" @click="abrirImportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Importar backup</button>
+          </div>
+        </section>
       </div>
     </template>
   </div>
