@@ -291,7 +291,7 @@ Alpine.data("appState", () => ({
     get gastoDoMes() {
       const mesAtual = this.hojeISO().slice(0, 7);
       const gastoTransacoes = this.transactions
-        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind !== "renda")
+        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind !== "renda" && !t.transferencia_interna)
         .reduce((s, t) => s + Number(t.amount), 0);
       const gastoContas = this.billPayments
         .filter((p) => p.status === "pago" && p.paid_at && p.paid_at.slice(0, 7) === mesAtual)
@@ -306,7 +306,7 @@ Alpine.data("appState", () => ({
       const inicioISO = inicioSemana.toISOString().slice(0, 10);
       const hojeISO = this.hojeISO();
       const gastoTransacoes = this.transactions
-        .filter((t) => t.date >= inicioISO && t.date <= hojeISO && t.kind !== "renda")
+        .filter((t) => t.date >= inicioISO && t.date <= hojeISO && t.kind !== "renda" && !t.transferencia_interna)
         .reduce((s, t) => s + Number(t.amount), 0);
       const gastoContas = this.billPayments
         .filter((p) => p.status === "pago" && p.paid_at && p.paid_at.slice(0, 10) >= inicioISO && p.paid_at.slice(0, 10) <= hojeISO)
@@ -319,11 +319,26 @@ Alpine.data("appState", () => ({
       return { total: pendentes.reduce((s, p) => s + Number(p.amount || 0), 0), quantidade: pendentes.length };
     },
 
-    get rendaDoMes() {
+    // bruta = tudo que entrou (inclui transferência interna entre Ricardo e Jéssica);
+    // líquida = só dinheiro novo de fora do casal — a que realmente importa pra saúde financeira.
+    get rendaBrutaDoMes() {
       const mesAtual = this.hojeISO().slice(0, 7);
       return this.transactions
         .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind === "renda")
         .reduce((s, t) => s + Number(t.amount), 0);
+    },
+
+    get rendaDoMes() {
+      const mesAtual = this.hojeISO().slice(0, 7);
+      return this.transactions
+        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind === "renda" && !t.transferencia_interna)
+        .reduce((s, t) => s + Number(t.amount), 0);
+    },
+
+    get transferenciasInternas() {
+      return this.transactions
+        .filter((t) => t.transferencia_interna)
+        .sort((a, b) => b.date.localeCompare(a.date));
     },
 
     // ===================== AJUSTES (perfil, saldo, categorias) =====================
@@ -404,6 +419,7 @@ Alpine.data("appState", () => ({
     transacoesDoMes(filtroKind) {
       return this.transactions
         .filter((t) => t.date.slice(0, 7) === this.mesFinanceiro)
+        .filter((t) => !t.transferencia_interna)
         .filter((t) => (filtroKind === "diaria" ? t.kind === "diaria" : t.kind !== "diaria"))
         .filter((t) => !this.filtroCategoriaTransacao || t.category_id === this.filtroCategoriaTransacao)
         .sort((a, b) => b.date.localeCompare(a.date));

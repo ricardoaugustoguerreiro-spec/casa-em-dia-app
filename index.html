@@ -122,8 +122,14 @@
             <p class="text-xs text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)'"></p>
           </div>
           <div class="rounded-2xl p-4 bg-green-50 shadow-sm">
-            <p class="text-xs text-green-700 mb-1">Renda do mês</p>
-            <p class="text-lg font-semibold text-green-800" x-text="rendaDoMes > 0 ? fmtMoeda(rendaDoMes) : 'Ainda não registrada'"></p>
+            <p class="text-xs text-green-700 mb-1">Renda do mês (bruta)</p>
+            <p class="text-lg font-semibold text-green-800" x-text="rendaBrutaDoMes > 0 ? fmtMoeda(rendaBrutaDoMes) : 'Ainda não registrada'"></p>
+            <p class="text-xs text-green-600">tudo que entrou, incl. transferências entre vocês</p>
+          </div>
+          <div class="rounded-2xl p-4 bg-emerald-50 shadow-sm">
+            <p class="text-xs text-emerald-700 mb-1">Renda do mês (líquida)</p>
+            <p class="text-lg font-semibold text-emerald-800" x-text="rendaDoMes > 0 ? fmtMoeda(rendaDoMes) : 'Ainda não registrada'"></p>
+            <p class="text-xs text-emerald-600">só dinheiro novo, de fora do casal</p>
           </div>
         </div>
 
@@ -133,6 +139,7 @@
           <button @click="abaFinanceiro='contas_fixas'" :class="abaFinanceiro==='contas_fixas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Contas fixas</button>
           <button @click="abaFinanceiro='dia_a_dia'" :class="abaFinanceiro==='dia_a_dia' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Dia a dia</button>
           <button @click="abaFinanceiro='cartao_variaveis'" :class="abaFinanceiro==='cartao_variaveis' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Cartão / Variáveis</button>
+          <button x-show="isAdmin" @click="abaFinanceiro='transferencias'" :class="abaFinanceiro==='transferencias' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Transferências</button>
         </div>
 
         <!-- RESUMO -->
@@ -190,7 +197,7 @@
         </template>
 
         <!-- SELETOR DE MÊS (contas fixas, dia a dia, cartão/variáveis) -->
-        <div x-show="abaFinanceiro !== 'resumo'" class="flex items-center justify-between mb-4">
+        <div x-show="abaFinanceiro !== 'resumo' && abaFinanceiro !== 'transferencias'" class="flex items-center justify-between mb-4">
           <button @click="mesFinanceiroAnterior" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
           <p class="font-semibold" x-text="nomeMesFinanceiro"></p>
           <button @click="mesFinanceiroSeguinte" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
@@ -285,6 +292,26 @@
                 </div>
               </template>
               <p x-show="transacoesDoMes('outros').length === 0" class="text-xs text-gray-400 py-2">Nenhum lançamento de cartão/variável neste mês.</p>
+            </div>
+          </section>
+        </template>
+
+        <!-- TRANSFERÊNCIAS INTERNAS (só admin) -->
+        <template x-if="abaFinanceiro === 'transferencias'">
+          <section class="bg-white rounded-2xl shadow-sm p-4">
+            <h2 class="text-sm font-semibold text-gray-700 mb-1">🔄 Transferências entre vocês</h2>
+            <p class="text-xs text-gray-400 mb-3">PIX entre Ricardo e Jéssica — não conta como renda nem gasto novo, é só dinheiro mudando de mão dentro de casa. Listado aqui pra dar transparência total do que está acontecendo na conta.</p>
+            <div class="divide-y">
+              <template x-for="t in transferenciasInternas" :key="t.id">
+                <div class="flex items-center justify-between gap-2 py-2.5">
+                  <div class="min-w-0">
+                    <p class="font-medium truncate" x-text="t.description"></p>
+                    <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
+                  </div>
+                  <p class="font-medium shrink-0 text-gray-500" x-text="fmtMoeda(t.amount)"></p>
+                </div>
+              </template>
+              <p x-show="transferenciasInternas.length === 0" class="text-xs text-gray-400 py-2">Nenhuma transferência interna registrada.</p>
             </div>
           </section>
         </template>
