@@ -68,6 +68,13 @@ Alpine.data("appState", () => ({
     criandoTransacao: false,
     formTransacao: { description: "", amount: "", date: "", account: "", kind: "diaria", category_id: "" },
     filtroCategoriaTransacao: "",
+    editandoPagamento: null,
+    formPagamento: { amount: "", due_date: "", status: "pendente" },
+    comprasParceladas: [],
+    criandoParcelada: false,
+    formParcelada: { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: "", parcela_fim: "" },
+    importandoCsv: false,
+    resultadoImportacao: null,
 
     // calendário
     events: [],
@@ -211,12 +218,13 @@ Alpine.data("appState", () => ({
       }
       this.view = "app";
       await this.loadDashboard();
+      await this.garantirContasFixasDoMes(this.mesFinanceiro);
       this.loadingData = false;
       this.$nextTick(() => this.animateCards());
     },
 
     async loadDashboard() {
-      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }, { data: balances }] =
+      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }, { data: balances }, { data: comprasParceladas }] =
         await Promise.all([
           supabase.from("categories").select("*").order("name"),
           supabase.from("fixed_bills").select("*").order("due_day"),
@@ -226,6 +234,7 @@ Alpine.data("appState", () => ({
           supabase.from("dias_menstruacao").select("*").order("data"),
           supabase.from("registros_intimos").select("*").order("data", { ascending: false }),
           supabase.from("balances").select("*").order("as_of", { ascending: false }),
+          supabase.from("compras_parceladas").select("*").order("parcela_inicio"),
         ]);
       this.categories = categories || [];
       this.fixedBills = fixedBills || [];
@@ -235,6 +244,7 @@ Alpine.data("appState", () => ({
       this.diasMenstruacao = diasMenstruacao || [];
       this.registrosIntimos = registrosIntimos || [];
       this.balances = balances || [];
+      this.comprasParceladas = comprasParceladas || [];
 
       const byAccount = {};
       for (const t of this.transactions) {
@@ -284,17 +294,152 @@ Alpine.data("appState", () => ({
       Object.assign(p, payload);
     },
 
+    abrirEditarPagamento(p) {
+      this.editandoPagamento = p;
+      this.formPagamento = { amount: p.amount, due_date: p.due_date, status: p.status };
+    },
+
+    async salvarPagamento() {
+      const f = this.formPagamento;
+      const payload = {
+        amount: Number(f.amount),
+        due_date: f.due_date,
+        status: f.status,
+        paid_at: f.status === "pago" ? (this.editandoPagamento.paid_at || new Date().toISOString()) : null,
+      };
+      const { error } = await supabase.from("bill_payments").update(payload).eq("id", this.editandoPagamento.id);
+      if (error) return alert("Erro ao salvar: " + error.message);
+      Object.assign(this.editandoPagamento, payload);
+      this.editandoPagamento = null;
+    },
+
+    // ===================== COMPRAS PARCELADAS (cartão) =====================
+
+    abrirNovaParcelada() {
+      this.formParcelada = { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: this.mesFinanceiro, parcela_fim: "" };
+      this.criandoParcelada = true;
+    },
+
+    async salvarParcelada() {
+      const f = this.formParcelada;
+      if (!f.descricao || !f.valor_parcela || !f.parcela_inicio || !f.parcela_fim) return alert("Preencha descrição, valor da parcela, início e fim.");
+      const { error } = await supabase.from("compras_parceladas").insert({
+        descricao: f.descricao,
+        cartao: f.cartao || null,
+        valor_parcela: Number(f.valor_parcela),
+        parcela_inicio: f.parcela_inicio.length === 7 ? f.parcela_inicio + "-01" : f.parcela_inicio,
+        parcela_fim: f.parcela_fim.length === 7 ? f.parcela_fim + "-01" : f.parcela_fim,
+        created_by: this.uid,
+      });
+      if (error) return alert("Erro ao salvar: " + error.message);
+      this.criandoParcelada = false;
+      await this.loadDashboard();
+    },
+
+    async excluirParcelada(id) {
+      if (!confirm("Excluir esta compra parcelada? Não tem como desfazer.")) return;
+      const { error } = await supabase.from("compras_parceladas").delete().eq("id", id);
+      if (error) return alert("Erro ao excluir: " + error.message);
+      this.comprasParceladas = this.comprasParceladas.filter((c) => c.id !== id);
+    },
+
+    // ===================== IMPORTAR CSV (concilia contas fixas + cria lançamentos) =====================
+
+    abrirImportarCsv() {
+      this.$refs.inputCsv.click();
+    },
+
+    async importarCsv(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const texto = await file.text();
+        const delim = texto.includes(";") ? ";" : ",";
+        const linhasTexto = texto.split(/\r?\n/).filter((l) => l.trim());
+        const inicioIdx = linhasTexto.findIndex((l) => /data/i.test(l) && /(valor|descri)/i.test(l));
+        const linhasDados = inicioIdx >= 0 ? linhasTexto.slice(inicioIdx + 1) : linhasTexto;
+
+        let contasMarcadas = 0;
+        let novosLancamentos = 0;
+
+        for (const linha of linhasDados) {
+          const campos = linha.split(delim).map((c) => c.trim());
+          if (campos.length < 3) continue;
+          const dataMatch = campos.find((c) => /^\d{2}\/\d{2}\/\d{4}$/.test(c));
+          if (!dataMatch) continue;
+          const [dia, mes, ano] = dataMatch.split("/");
+          const dataISO = `${ano}-${mes}-${dia}`;
+          if (dataISO.slice(0, 7) !== this.mesFinanceiro) continue; // só dentro do mês selecionado
+          if (dataISO > this.hojeISO()) continue; // não importa data futura
+
+          const valorStr = campos.reverse().find((c) => /^-?[\d.,]+$/.test(c) && c.replace(/[.,]/g, "").length > 0);
+          campos.reverse();
+          if (!valorStr) continue;
+          const valor = parseFloat(valorStr.replace(/\./g, "").replace(",", "."));
+          if (isNaN(valor) || valor === 0) continue;
+
+          const descricao = campos.filter((c) => c !== dataMatch && c !== valorStr).join(" ").trim() || "Lançamento importado";
+          const descNorm = descricao.toLowerCase();
+
+          const categoria = this.categories.find((c) => (c.keywords || []).some((k) => descNorm.includes(k.toLowerCase())));
+
+          // tenta conciliar com uma conta fixa pendente desse mês, da mesma categoria
+          let conciliado = false;
+          if (categoria) {
+            const billDaCategoria = this.fixedBills.find((b) => b.category_id === categoria.id);
+            if (billDaCategoria) {
+              const pagamento = this.billPayments.find(
+                (p) => p.fixed_bill_id === billDaCategoria.id && p.due_date.slice(0, 7) === this.mesFinanceiro && p.status === "pendente"
+              );
+              if (pagamento) {
+                const payload = { status: "pago", paid_at: dataISO, amount: Math.abs(valor) };
+                const { error } = await supabase.from("bill_payments").update(payload).eq("id", pagamento.id);
+                if (!error) {
+                  Object.assign(pagamento, payload);
+                  contasMarcadas++;
+                  conciliado = true;
+                }
+              }
+            }
+          }
+
+          if (!conciliado) {
+            const { error } = await supabase.from("transactions").insert({
+              date: dataISO,
+              description: descricao,
+              amount: Math.abs(valor),
+              kind: valor > 0 ? "renda" : categoria?.kind === "diaria" ? "diaria" : "variavel",
+              category_id: categoria?.id || null,
+              source: "importacao_csv",
+              created_by: this.uid,
+            });
+            if (!error) novosLancamentos++;
+          }
+        }
+
+        this.resultadoImportacao = { contasMarcadas, novosLancamentos };
+        await this.loadDashboard();
+        this.$nextTick(() => this.animateCards());
+      } catch (e) {
+        alert("Erro ao importar: " + e.message);
+      } finally {
+        event.target.value = "";
+      }
+    },
+
     // ===================== RESUMO FINANCEIRO (aba Financeiro) =====================
+    // Todos os cards abaixo seguem o mês selecionado em "mesFinanceiro" (navegação ‹ Mês ›),
+    // não o mês real de hoje — por isso "Marcar pago"/edição sempre refletem na hora.
 
     // contas fixas pagas (bill_payments) também contam como gasto — só transactions
     // subestimaria o mês, já que Internet/Água/Luz/Casa/IPTU/MEI/Carro vivem só ali.
     get gastoDoMes() {
-      const mesAtual = this.hojeISO().slice(0, 7);
+      const mes = this.mesFinanceiro;
       const gastoTransacoes = this.transactions
-        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind !== "renda" && !t.transferencia_interna)
+        .filter((t) => t.date.slice(0, 7) === mes && t.kind !== "renda" && !t.transferencia_interna)
         .reduce((s, t) => s + Number(t.amount), 0);
-      const gastoContas = this.billPayments
-        .filter((p) => p.status === "pago" && p.paid_at && p.paid_at.slice(0, 7) === mesAtual)
+      const gastoContas = this.billPaymentsDoMes
+        .filter((p) => p.status === "pago")
         .reduce((s, p) => s + Number(p.amount || 0), 0);
       return gastoTransacoes + gastoContas;
     },
@@ -315,23 +460,27 @@ Alpine.data("appState", () => ({
     },
 
     get pendenteEmContas() {
-      const pendentes = this.billPayments.filter((p) => p.status === "pendente");
+      const pendentes = this.billPaymentsDoMes.filter((p) => p.status === "pendente");
       return { total: pendentes.reduce((s, p) => s + Number(p.amount || 0), 0), quantidade: pendentes.length };
+    },
+
+    get totalContasFixasDoMes() {
+      return this.billPaymentsDoMes.reduce((s, p) => s + Number(p.amount || 0), 0);
     },
 
     // bruta = tudo que entrou (inclui transferência interna entre Ricardo e Jéssica);
     // líquida = só dinheiro novo de fora do casal — a que realmente importa pra saúde financeira.
     get rendaBrutaDoMes() {
-      const mesAtual = this.hojeISO().slice(0, 7);
+      const mes = this.mesFinanceiro;
       return this.transactions
-        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind === "renda")
+        .filter((t) => t.date.slice(0, 7) === mes && t.kind === "renda")
         .reduce((s, t) => s + Number(t.amount), 0);
     },
 
     get rendaDoMes() {
-      const mesAtual = this.hojeISO().slice(0, 7);
+      const mes = this.mesFinanceiro;
       return this.transactions
-        .filter((t) => t.date.slice(0, 7) === mesAtual && t.kind === "renda" && !t.transferencia_interna)
+        .filter((t) => t.date.slice(0, 7) === mes && t.kind === "renda" && !t.transferencia_interna)
         .reduce((s, t) => s + Number(t.amount), 0);
     },
 
@@ -339,6 +488,16 @@ Alpine.data("appState", () => ({
       return this.transactions
         .filter((t) => t.transferencia_interna)
         .sort((a, b) => b.date.localeCompare(a.date));
+    },
+
+    // parcelas do cartão que caem no mês selecionado
+    get parceladasDoMes() {
+      const mes = this.mesFinanceiro;
+      return this.comprasParceladas.filter((c) => c.parcela_inicio.slice(0, 7) <= mes && c.parcela_fim.slice(0, 7) >= mes);
+    },
+
+    get totalParceladasDoMes() {
+      return this.parceladasDoMes.reduce((s, c) => s + Number(c.valor_parcela), 0);
     },
 
     // ===================== AJUSTES (perfil, saldo, categorias) =====================
@@ -393,16 +552,40 @@ Alpine.data("appState", () => ({
 
     // ===================== FINANCEIRO: navegação mês a mês =====================
 
-    mesFinanceiroAnterior() {
+    async mesFinanceiroAnterior() {
       const [y, m] = this.mesFinanceiro.split("-").map(Number);
       const d = new Date(y, m - 2, 1);
       this.mesFinanceiro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      await this.garantirContasFixasDoMes(this.mesFinanceiro);
     },
 
-    mesFinanceiroSeguinte() {
+    async mesFinanceiroSeguinte() {
       const [y, m] = this.mesFinanceiro.split("-").map(Number);
       const d = new Date(y, m, 1);
       this.mesFinanceiro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      await this.garantirContasFixasDoMes(this.mesFinanceiro);
+    },
+
+    // como as contas são fixas (recorrem todo mês), já abre o bill_payment do mês
+    // automaticamente ao navegar pra lá, em vez de exigir criação manual mês a mês.
+    async garantirContasFixasDoMes(mes) {
+      const [ano, mesNum] = mes.split("-").map(Number);
+      const ultimoDiaDoMes = new Date(ano, mesNum, 0).getDate();
+      const faltando = [];
+      for (const bill of this.fixedBills.filter((b) => b.active !== false)) {
+        const jaExiste = this.billPayments.some((p) => p.fixed_bill_id === bill.id && p.due_date.slice(0, 7) === mes);
+        if (jaExiste) continue;
+        const dia = Math.min(bill.due_day, ultimoDiaDoMes);
+        faltando.push({
+          fixed_bill_id: bill.id,
+          due_date: `${mes}-${String(dia).padStart(2, "0")}`,
+          amount: bill.amount,
+          status: "pendente",
+        });
+      }
+      if (!faltando.length) return;
+      const { data, error } = await supabase.from("bill_payments").insert(faltando).select();
+      if (!error && data) this.billPayments.push(...data);
     },
 
     get nomeMesFinanceiro() {

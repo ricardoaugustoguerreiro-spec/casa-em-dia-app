@@ -106,18 +106,25 @@
 
     <template x-if="!loadingData && abaAtual === 'financeiro'">
       <div>
-        <!-- RESUMO DO MÊS -->
+        <!-- SELETOR DE MÊS (vale pra tudo, exceto transferências que é histórico completo) -->
+        <div x-show="abaFinanceiro !== 'transferencias'" class="flex items-center justify-between mb-4 bg-white rounded-2xl shadow-sm px-2 py-2">
+          <button @click="mesFinanceiroAnterior" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
+          <p class="font-semibold" x-text="nomeMesFinanceiro"></p>
+          <button @click="mesFinanceiroSeguinte" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
+        </div>
+
+        <!-- RESUMO DO MÊS SELECIONADO -->
         <div class="grid gap-3 mb-6" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
           <div class="rounded-2xl p-4 bg-white shadow-sm">
-            <p class="text-xs text-gray-500 mb-1">Gasto do mês</p>
+            <p class="text-xs text-gray-500 mb-1" x-text="'Gasto total · ' + nomeMesFinanceiro"></p>
             <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDoMes)"></p>
           </div>
           <div class="rounded-2xl p-4 bg-white shadow-sm">
-            <p class="text-xs text-gray-500 mb-1">Gasto da semana</p>
+            <p class="text-xs text-gray-500 mb-1">Gasto da semana (hoje)</p>
             <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDaSemana)"></p>
           </div>
           <div class="rounded-2xl p-4 bg-amber-50 shadow-sm">
-            <p class="text-xs text-amber-700 mb-1">Pendente em contas</p>
+            <p class="text-xs text-amber-700 mb-1">Pendente nesse mês</p>
             <p class="text-lg font-semibold text-amber-800" x-text="fmtMoeda(pendenteEmContas.total)"></p>
             <p class="text-xs text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)'"></p>
           </div>
@@ -139,6 +146,7 @@
           <button @click="abaFinanceiro='contas_fixas'" :class="abaFinanceiro==='contas_fixas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Contas fixas</button>
           <button @click="abaFinanceiro='dia_a_dia'" :class="abaFinanceiro==='dia_a_dia' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Dia a dia</button>
           <button @click="abaFinanceiro='cartao_variaveis'" :class="abaFinanceiro==='cartao_variaveis' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Cartão / Variáveis</button>
+          <button @click="abaFinanceiro='parceladas'" :class="abaFinanceiro==='parceladas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Parceladas</button>
           <button x-show="isAdmin" @click="abaFinanceiro='transferencias'" :class="abaFinanceiro==='transferencias' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Transferências</button>
         </div>
 
@@ -146,9 +154,9 @@
         <template x-if="abaFinanceiro === 'resumo'">
           <div class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
             <section class="bg-white rounded-2xl shadow-sm p-4">
-              <h2 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">⚠️ Próximas contas pendentes</h2>
+              <h2 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">⚠️ Contas pendentes nesse mês</h2>
               <div class="divide-y">
-                <template x-for="p in billPayments.filter(p => p.status === 'pendente').slice(0, 8)" :key="p.id">
+                <template x-for="p in billPaymentsDoMes.filter(p => p.status === 'pendente')" :key="p.id">
                   <div class="flex items-center justify-between gap-2 py-2.5">
                     <div class="min-w-0">
                       <p class="font-medium truncate" x-text="billName(p.fixed_bill_id)"></p>
@@ -157,13 +165,13 @@
                     <p class="font-medium shrink-0" x-text="fmtMoeda(p.amount)"></p>
                   </div>
                 </template>
-                <p x-show="billPayments.filter(p => p.status === 'pendente').length === 0" class="text-xs text-gray-400 py-1">Nenhuma conta pendente. 🎉</p>
+                <p x-show="billPaymentsDoMes.filter(p => p.status === 'pendente').length === 0" class="text-xs text-gray-400 py-1">Nenhuma conta pendente nesse mês. 🎉</p>
               </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm p-4">
-              <h2 class="text-sm font-semibold text-gray-700 mb-3">📑 Últimos lançamentos</h2>
+              <h2 class="text-sm font-semibold text-gray-700 mb-3">📑 Lançamentos do mês</h2>
               <div class="divide-y">
-                <template x-for="t in transactions.slice(0, 8)" :key="t.id">
+                <template x-for="t in transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna).slice(0, 8)" :key="t.id">
                   <div class="flex items-center justify-between gap-2 py-2.5">
                     <div class="min-w-0">
                       <p class="font-medium truncate" x-text="t.description"></p>
@@ -172,11 +180,11 @@
                     <p class="font-medium shrink-0" :class="t.kind === 'renda' ? 'text-green-700' : ''" x-text="fmtMoeda(t.amount)"></p>
                   </div>
                 </template>
-                <p x-show="transactions.length === 0" class="text-xs text-gray-400 py-1">Nenhum lançamento ainda.</p>
+                <p x-show="transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna).length === 0" class="text-xs text-gray-400 py-1">Nenhum lançamento nesse mês.</p>
               </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm p-4" style="grid-column: 1 / -1;">
-              <h2 class="text-sm font-semibold text-gray-700 mb-3">💳 Cartões e contas (total conjunto)</h2>
+              <h2 class="text-sm font-semibold text-gray-700 mb-3">💳 Cartões e contas (total conjunto, desde sempre)</h2>
               <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
                 <template x-for="c in cardTotals" :key="c.nome">
                   <div class="rounded-xl p-3 bg-gray-50" :data-card-value="c.total">
@@ -196,20 +204,19 @@
           </div>
         </template>
 
-        <!-- SELETOR DE MÊS (contas fixas, dia a dia, cartão/variáveis) -->
-        <div x-show="abaFinanceiro !== 'resumo' && abaFinanceiro !== 'transferencias'" class="flex items-center justify-between mb-4">
-          <button @click="mesFinanceiroAnterior" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
-          <p class="font-semibold" x-text="nomeMesFinanceiro"></p>
-          <button @click="mesFinanceiroSeguinte" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
-        </div>
-
         <!-- CONTAS FIXAS -->
         <template x-if="abaFinanceiro === 'contas_fixas'">
           <section class="bg-white rounded-2xl shadow-sm p-4">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
               <h2 class="text-sm font-semibold text-gray-700">📄 Contas fixas</h2>
-              <button @click="abrirNovaContaFixa" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
+              <div class="flex items-center gap-2">
+                <input type="file" accept=".csv,.txt" class="hidden" x-ref="inputCsv" @change="importarCsv($event)" />
+                <button @click="abrirImportarCsv" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">📥 Importar CSV</button>
+                <button @click="abrirNovaContaFixa" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
+              </div>
             </div>
+            <p class="text-xs text-gray-500 mb-3" x-text="'Total do mês: ' + fmtMoeda(totalContasFixasDoMes)"></p>
+            <p x-show="resultadoImportacao" class="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 mb-3" x-text="resultadoImportacao ? (resultadoImportacao.contasMarcadas + ' conta(s) marcada(s) como paga(s), ' + resultadoImportacao.novosLancamentos + ' lançamento(s) novo(s) criado(s).') : ''"></p>
             <div class="divide-y">
               <template x-for="p in billPaymentsDoMes" :key="p.id">
                 <div class="flex items-center justify-between gap-2 py-3 flex-wrap">
@@ -222,6 +229,7 @@
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarPago(p)" class="text-xs px-3 py-1.5 rounded-full border" :class="p.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="p.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
+                    <button @click="abrirEditarPagamento(p)" aria-label="Editar" class="text-gray-300 hover:text-gray-600 p-1">✎</button>
                     <button @click="excluirContaFixa(p.fixed_bill_id)" aria-label="Excluir conta fixa" class="text-gray-300 hover:text-red-500 p-1">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
                     </button>
@@ -232,6 +240,27 @@
             </div>
           </section>
         </template>
+
+        <!-- MODAL: editar conta do mês -->
+        <div x-show="editandoPagamento" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="editandoPagamento = null">
+          <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
+            <div class="flex items-center justify-between mb-3">
+              <p class="font-semibold" x-text="editandoPagamento ? billName(editandoPagamento.fixed_bill_id) : ''"></p>
+              <button @click="editandoPagamento = null" class="text-gray-400">✕</button>
+            </div>
+            <form @submit.prevent="salvarPagamento" class="space-y-2">
+              <label class="block text-xs text-gray-500">Valor (R$)</label>
+              <input type="number" step="0.01" x-model="formPagamento.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <label class="block text-xs text-gray-500">Vencimento</label>
+              <input type="date" x-model="formPagamento.due_date" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <select x-model="formPagamento.status" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <option value="pendente">Pendente</option>
+                <option value="pago">Pago</option>
+              </select>
+              <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
+            </form>
+          </div>
+        </div>
 
         <!-- DIA A DIA -->
         <template x-if="abaFinanceiro === 'dia_a_dia'">
@@ -295,6 +324,54 @@
             </div>
           </section>
         </template>
+
+        <!-- PARCELADAS -->
+        <template x-if="abaFinanceiro === 'parceladas'">
+          <section class="bg-white rounded-2xl shadow-sm p-4">
+            <div class="flex items-center justify-between mb-1">
+              <h2 class="text-sm font-semibold text-gray-700">🧾 Compras parceladas no cartão</h2>
+              <button @click="abrirNovaParcelada" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
+            </div>
+            <p class="text-xs text-gray-500 mb-3" x-text="'Total de parcelas nesse mês: ' + fmtMoeda(totalParceladasDoMes)"></p>
+            <div class="divide-y">
+              <template x-for="c in parceladasDoMes" :key="c.id">
+                <div class="flex items-center justify-between gap-2 py-3">
+                  <div class="min-w-0">
+                    <p class="font-medium truncate" x-text="c.descricao"></p>
+                    <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + 'até ' + fmtData(c.parcela_fim)"></p>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <p class="font-medium" x-text="fmtMoeda(c.valor_parcela)"></p>
+                    <button @click="excluirParcelada(c.id)" class="text-gray-300 hover:text-red-500 p-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <p x-show="parceladasDoMes.length === 0" class="text-xs text-gray-400 py-2">Nenhuma parcela ativa nesse mês.</p>
+            </div>
+          </section>
+        </template>
+
+        <!-- MODAL: nova compra parcelada -->
+        <div x-show="criandoParcelada" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoParcelada = false">
+          <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
+            <div class="flex items-center justify-between mb-3">
+              <p class="font-semibold">Nova compra parcelada</p>
+              <button @click="criandoParcelada = false" class="text-gray-400">✕</button>
+            </div>
+            <form @submit.prevent="salvarParcelada" class="space-y-2">
+              <input type="text" placeholder="Descrição (ex: Sofá)" x-model="formParcelada.descricao" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" placeholder="Cartão (ex: Itaú)" x-model="formParcelada.cartao" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="number" step="0.01" placeholder="Valor da parcela (R$)" x-model="formParcelada.valor_parcela" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <label class="block text-xs text-gray-500">1ª parcela (mês)</label>
+              <input type="month" x-model="formParcelada.parcela_inicio" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <label class="block text-xs text-gray-500">Última parcela (mês)</label>
+              <input type="month" x-model="formParcelada.parcela_fim" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
+            </form>
+          </div>
+        </div>
 
         <!-- TRANSFERÊNCIAS INTERNAS (só admin) -->
         <template x-if="abaFinanceiro === 'transferencias'">
