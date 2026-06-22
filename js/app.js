@@ -58,9 +58,16 @@ Alpine.data("appState", () => ({
     balances: [],
     loadingData: true,
     abaAtual: "financeiro", // financeiro | calendario | ajustes
+    abaFinanceiro: "resumo", // resumo | contas_fixas | dia_a_dia | cartao_variaveis
+    mesFinanceiro: new Date().toISOString().slice(0, 7), // "AAAA-MM"
     formPerfil: { display_name: "", color: "#7c3aed" },
     formSaldo: { amount: "", notes: "" },
     formCategoria: { name: "", kind: "variavel", color: "#64748b" },
+    criandoContaFixa: false,
+    formContaFixa: { name: "", amount: "", due_day: "10", category_id: "" },
+    criandoTransacao: false,
+    formTransacao: { description: "", amount: "", date: "", account: "", kind: "diaria", category_id: "" },
+    filtroCategoriaTransacao: "",
 
     // calendário
     events: [],
@@ -367,6 +374,107 @@ Alpine.data("appState", () => ({
       const { error } = await supabase.from("categories").delete().eq("id", id);
       if (error) return alert("Erro ao excluir: " + error.message);
       this.categories = this.categories.filter((c) => c.id !== id);
+    },
+
+    // ===================== FINANCEIRO: navegação mês a mês =====================
+
+    mesFinanceiroAnterior() {
+      const [y, m] = this.mesFinanceiro.split("-").map(Number);
+      const d = new Date(y, m - 2, 1);
+      this.mesFinanceiro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    },
+
+    mesFinanceiroSeguinte() {
+      const [y, m] = this.mesFinanceiro.split("-").map(Number);
+      const d = new Date(y, m, 1);
+      this.mesFinanceiro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    },
+
+    get nomeMesFinanceiro() {
+      const [y, m] = this.mesFinanceiro.split("-").map(Number);
+      return `${this.nomesMeses[m - 1]} de ${y}`;
+    },
+
+    get billPaymentsDoMes() {
+      return this.billPayments
+        .filter((p) => p.due_date.slice(0, 7) === this.mesFinanceiro)
+        .sort((a, b) => a.due_date.localeCompare(b.due_date));
+    },
+
+    transacoesDoMes(filtroKind) {
+      return this.transactions
+        .filter((t) => t.date.slice(0, 7) === this.mesFinanceiro)
+        .filter((t) => (filtroKind === "diaria" ? t.kind === "diaria" : t.kind !== "diaria"))
+        .filter((t) => !this.filtroCategoriaTransacao || t.category_id === this.filtroCategoriaTransacao)
+        .sort((a, b) => b.date.localeCompare(a.date));
+    },
+
+    // ===================== FINANCEIRO: contas fixas (CRUD completo) =====================
+
+    abrirNovaContaFixa() {
+      this.formContaFixa = { name: "", amount: "", due_day: "10", category_id: "" };
+      this.criandoContaFixa = true;
+    },
+
+    async salvarContaFixa() {
+      const f = this.formContaFixa;
+      if (!f.name || !f.amount || !f.due_day) return alert("Preencha nome, valor e dia de vencimento.");
+      const { data: bill, error } = await supabase
+        .from("fixed_bills")
+        .insert({
+          name: f.name,
+          amount: Number(f.amount),
+          due_day: Number(f.due_day),
+          category_id: f.category_id || null,
+          created_by: this.uid,
+        })
+        .select()
+        .single();
+      if (error) return alert("Erro ao criar conta fixa: " + error.message);
+      const dueDate = `${this.mesFinanceiro}-${String(f.due_day).padStart(2, "0")}`;
+      await supabase.from("bill_payments").insert({ fixed_bill_id: bill.id, due_date: dueDate, amount: bill.amount, status: "pendente" });
+      this.criandoContaFixa = false;
+      await this.loadDashboard();
+    },
+
+    async excluirContaFixa(fixedBillId) {
+      if (!confirm("Excluir esta conta fixa? Isso remove TODOS os meses dela (passados e futuros), não tem como desfazer.")) return;
+      const { error } = await supabase.from("fixed_bills").delete().eq("id", fixedBillId);
+      if (error) return alert("Erro ao excluir: " + error.message);
+      await this.loadDashboard();
+    },
+
+    // ===================== FINANCEIRO: dia a dia / cartão e variáveis =====================
+
+    abrirNovaTransacao(kindPadrao) {
+      this.formTransacao = {
+        description: "",
+        amount: "",
+        date: `${this.mesFinanceiro}-${String(new Date().getDate()).padStart(2, "0")}`,
+        account: "",
+        kind: kindPadrao,
+        category_id: "",
+      };
+      this.criandoTransacao = true;
+    },
+
+    async salvarTransacao() {
+      const f = this.formTransacao;
+      if (!f.description || !f.amount || !f.date) return alert("Preencha descrição, valor e data.");
+      const { error } = await supabase.from("transactions").insert({
+        description: f.description,
+        amount: Number(f.amount),
+        date: f.date,
+        account: f.account || null,
+        kind: f.kind,
+        category_id: f.category_id || null,
+        source: "manual",
+        created_by: this.uid,
+      });
+      if (error) return alert("Erro ao salvar lançamento: " + error.message);
+      this.criandoTransacao = false;
+      await this.loadDashboard();
+      this.$nextTick(() => this.animateCards());
     },
 
     recalcularCards() {
