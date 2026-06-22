@@ -123,7 +123,7 @@
           </div>
           <div class="rounded-2xl p-4 bg-green-50 shadow-sm">
             <p class="text-xs text-green-700 mb-1">Renda do mês</p>
-            <p class="text-lg font-semibold text-green-800" x-text="fmtMoeda(rendaDoMes)"></p>
+            <p class="text-lg font-semibold text-green-800" x-text="rendaDoMes > 0 ? fmtMoeda(rendaDoMes) : 'Ainda não registrada'"></p>
           </div>
         </div>
 
