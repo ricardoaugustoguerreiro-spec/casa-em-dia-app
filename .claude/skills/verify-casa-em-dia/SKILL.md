@@ -110,6 +110,12 @@ Regra geral por trás disso: se um mesmo erro de usuário (caminho errado, link 
 ### 13. Calendário tem skill própria
 Tudo relacionado a feriados, permissões pessoal×trabalho, conflito de horário, fuso horário e import de prazos do calendário tem checklist e histórico dedicados em `.claude\skills\verify-calendario\` (SKILL.md + lessons.md) — rode essa sub-skill quando o problema for especificamente do módulo de calendário, em vez de tentar cobrir tudo aqui.
 
+### 14. Expressões `:class`/`:style`/`x-show` grandes podem quebrar SILENCIOSAMENTE (lição #11)
+Alpine engole erro de sintaxe numa expressão e simplesmente não aplica o binding — sem erro visível no app, só um `console.warn` que ninguém vê se não checar. Depois de editar qualquer ternário encadeado grande (mais de 2-3 níveis) ou converter pra sintaxe de array `:class="[...]"`:
+1. Conte parênteses abertos vs fechados na expressão isolada (rápido de fazer manualmente ou com `s.count('(') == s.count(')')` em Python).
+2. Suba o app no preview local (`H:\Meu Drive\FINANÇAS\.claude\launch.json`) e cheque `console_logs` nível warn/error — não confie só em screenshot, esse tipo de bug não aparece visualmente até você comparar com/sem a correção lado a lado.
+3. Se o preview ficar travado/servindo 404 sem motivo aparente, é processo python órfão de uma sessão anterior — mate por PID (porta 8731) e chame `preview_start` de novo, não é bug do app.
+
 ## Depois de verificar: o relatório
 
 Produza um relatório curto pro usuário com este formato:
