@@ -93,6 +93,9 @@
       </div>
       <div class="flex items-center gap-3 flex-wrap">
         <input type="file" accept="application/json" class="hidden" x-ref="inputBackup" @change="importarBackup($event)" />
+        <button x-show="notificacaoStatus === 'default'" @click="ativarNotificacoes" class="text-sm px-3 py-1.5 rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50">🔔 Ativar notificações</button>
+        <span x-show="notificacaoStatus === 'granted'" class="text-xs text-gray-400">🔔 Notificações ativas</span>
+        <span x-show="notificacaoStatus === 'denied'" class="text-xs text-gray-400" title="Pra reativar, mude a permissão de notificações desse site nas configurações do navegador">🔕 Notificações bloqueadas</span>
         <button @click="exportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Exportar backup</button>
         <button x-show="isAdmin" @click="abrirImportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Importar backup</button>
         <button @click="logout" class="text-sm text-gray-500 hover:text-rose-600">Sair</button>

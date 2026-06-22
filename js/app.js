@@ -2,6 +2,16 @@ import { supabase } from "./supabaseClient.js";
 import Alpine from "https://esm.sh/alpinejs@3.14.3";
 import { nomeFeriado } from "./feriados.js";
 import { faseLua, luaMarcante } from "./lua.js";
+import { VAPID_PUBLIC_KEY } from "./config.js";
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
 
 export const CARTOES_FAMILIA = [
   "Itaú Ricardo",
@@ -38,6 +48,7 @@ Alpine.data("appState", () => ({
     profile: null,
     isAdmin: false,
     uid: null,
+    notificacaoStatus: "default", // default | granted | denied | unsupported
     fixedBills: [],
     billPayments: [],
     categories: [],
@@ -61,6 +72,7 @@ Alpine.data("appState", () => ({
     formCiclo: { data_inicio: "", duracao_periodo: 5, duracao_ciclo: 28 },
 
     async init() {
+      this.atualizarStatusNotificacao();
       const lembrado = localStorage.getItem("casa-em-dia:lastEmail");
       if (lembrado) {
         this.email = lembrado;
@@ -127,6 +139,47 @@ Alpine.data("appState", () => ({
       await supabase.auth.signOut();
       this.view = "login";
       this.profile = null;
+    },
+
+    // ===================== NOTIFICAÇÕES PUSH =====================
+
+    atualizarStatusNotificacao() {
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        this.notificacaoStatus = "unsupported";
+        return;
+      }
+      this.notificacaoStatus = Notification.permission; // 'default' | 'granted' | 'denied'
+    },
+
+    async ativarNotificacoes() {
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        this.notificacaoStatus = "unsupported";
+        return alert("Esse navegador/dispositivo não suporta notificações push. No iPhone, o app precisa estar instalado na tela inicial (Adicionar à Tela de Início) e o iOS precisa ser 16.4 ou mais novo.");
+      }
+      const permissao = await Notification.requestPermission();
+      this.notificacaoStatus = permissao;
+      if (permissao !== "granted") return;
+
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      const json = subscription.toJSON();
+      const { error } = await supabase.from("push_subscriptions").upsert(
+        {
+          user_id: this.uid,
+          endpoint: json.endpoint,
+          p256dh: json.keys.p256dh,
+          auth: json.keys.auth,
+        },
+        { onConflict: "user_id,endpoint" }
+      );
+      if (error) return alert("Erro ao ativar notificações: " + error.message);
+      alert("Notificações ativadas! Você vai receber avisos de contas/prazos vencendo, eventos do calendário e conflitos de agenda.");
     },
 
     async loadAfterLogin() {

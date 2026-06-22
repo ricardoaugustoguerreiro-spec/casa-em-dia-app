@@ -40,3 +40,37 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
+
+// ===================== NOTIFICAÇÕES PUSH =====================
+
+self.addEventListener("push", (event) => {
+  let dados = { title: "Casa em Dia", body: "Você tem uma novidade no app." };
+  if (event.data) {
+    try {
+      dados = event.data.json();
+    } catch (e) {
+      dados.body = event.data.text();
+    }
+  }
+  event.waitUntil(
+    self.registration.showNotification(dados.title || "Casa em Dia", {
+      body: dados.body || "",
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      data: { url: dados.url || "./index.html" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "./index.html";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) return client.focus();
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
