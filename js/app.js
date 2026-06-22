@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient.js";
 import Alpine from "https://esm.sh/alpinejs@3.14.3";
 import { nomeFeriado } from "./feriados.js";
+import { faseLua, luaMarcante } from "./lua.js";
 
 export const CARTOES_FAMILIA = [
   "Itaú Ricardo",
@@ -36,6 +37,7 @@ Alpine.data("appState", () => ({
     // app data
     profile: null,
     isAdmin: false,
+    uid: null,
     fixedBills: [],
     billPayments: [],
     categories: [],
@@ -51,6 +53,12 @@ Alpine.data("appState", () => ({
     diaSelecionado: null, // 'AAAA-MM-DD'
     eventoEditando: null,
     formEvento: { title: "", data: "", hora_inicio: "09:00", hora_fim: "10:00", tipo: "pessoal", location: "", notes: "", status_trabalho: "aberto" },
+
+    // ciclo menstrual (privado, só de quem registra) + registro íntimo
+    ciclo: null,
+    registrosIntimos: [],
+    editandoCiclo: false,
+    formCiclo: { data_inicio: "", duracao_periodo: 5, duracao_ciclo: 28 },
 
     async init() {
       const lembrado = localStorage.getItem("casa-em-dia:lastEmail");
@@ -125,6 +133,7 @@ Alpine.data("appState", () => ({
       this.loadingData = true;
       const { data: userData } = await supabase.auth.getUser();
       const uid = userData?.user?.id;
+      this.uid = uid || null;
       if (uid) {
         const { data: profile } = await supabase
           .from("profiles")
@@ -141,19 +150,23 @@ Alpine.data("appState", () => ({
     },
 
     async loadDashboard() {
-      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }] =
+      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: ciclos }, { data: registrosIntimos }] =
         await Promise.all([
           supabase.from("categories").select("*").order("name"),
           supabase.from("fixed_bills").select("*").order("due_day"),
           supabase.from("bill_payments").select("*").order("due_date", { ascending: false }),
           supabase.from("transactions").select("*").order("date", { ascending: false }),
           supabase.from("events").select("*").order("starts_at"),
+          supabase.from("ciclos_menstruais").select("*").order("data_inicio", { ascending: false }).limit(1),
+          supabase.from("registros_intimos").select("*").order("data", { ascending: false }),
         ]);
       this.categories = categories || [];
       this.fixedBills = fixedBills || [];
       this.billPayments = billPayments || [];
       this.transactions = transactions || [];
       this.events = events || [];
+      this.ciclo = (ciclos && ciclos[0]) || null;
+      this.registrosIntimos = registrosIntimos || [];
 
       const byAccount = {};
       for (const t of this.transactions) {
@@ -290,6 +303,116 @@ Alpine.data("appState", () => ({
 
     feriadoDoDia(dataISO) {
       return dataISO ? nomeFeriado(dataISO) : null;
+    },
+
+    luaDoDia(dataISO) {
+      return dataISO ? faseLua(dataISO) : null;
+    },
+
+    luaMarcanteDoDia(dataISO) {
+      return dataISO ? luaMarcante(dataISO) : null;
+    },
+
+    // ===================== CICLO MENSTRUAL (privado) =====================
+
+    faseCicloDoDia(dataISO) {
+      if (!this.ciclo || !dataISO) return null;
+      const inicio = new Date(this.ciclo.data_inicio + "T00:00:00");
+      const dia = new Date(dataISO + "T00:00:00");
+      const duracaoCiclo = this.ciclo.duracao_ciclo;
+      const duracaoPeriodo = this.ciclo.duracao_periodo;
+      const diff = Math.floor((dia - inicio) / 86400000);
+      const diaDoCiclo = (((diff % duracaoCiclo) + duracaoCiclo) % duracaoCiclo) + 1;
+      const ovulacaoDia = duracaoCiclo - 14;
+      const fertilInicio = ovulacaoDia - 5;
+      const fertilFim = ovulacaoDia + 1;
+      if (diaDoCiclo <= duracaoPeriodo) return "menstrual";
+      if (diaDoCiclo === ovulacaoDia) return "ovulacao";
+      if (diaDoCiclo >= fertilInicio && diaDoCiclo <= fertilFim) return "fertil";
+      return null;
+    },
+
+    get cicloInfo() {
+      if (!this.ciclo) return null;
+      const inicio = new Date(this.ciclo.data_inicio + "T00:00:00");
+      const hoje = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00");
+      const duracaoCiclo = this.ciclo.duracao_ciclo;
+      const duracaoPeriodo = this.ciclo.duracao_periodo;
+      const diasDesdeInicio = Math.floor((hoje - inicio) / 86400000);
+      const diaDoCiclo = (((diasDesdeInicio % duracaoCiclo) + duracaoCiclo) % duracaoCiclo) + 1;
+      const ovulacaoDia = duracaoCiclo - 14;
+      const fertilInicio = ovulacaoDia - 5;
+      const fertilFim = ovulacaoDia + 1;
+
+      let fase;
+      if (diaDoCiclo <= duracaoPeriodo) fase = "Menstruação";
+      else if (diaDoCiclo === ovulacaoDia) fase = "Ovulação";
+      else if (diaDoCiclo >= fertilInicio && diaDoCiclo <= fertilFim) fase = "Período fértil";
+      else if (diaDoCiclo < fertilInicio) fase = "Fase folicular";
+      else fase = "Fase lútea";
+
+      const ciclosCompletos = Math.floor(diasDesdeInicio / duracaoCiclo) + 1;
+      const addDias = (data, n) => {
+        const d = new Date(data);
+        d.setDate(d.getDate() + n);
+        return d.toISOString().slice(0, 10);
+      };
+      const inicioCicloAtual = addDias(inicio, (ciclosCompletos - 1) * duracaoCiclo);
+
+      return {
+        diaDoCiclo,
+        duracaoCiclo,
+        fase,
+        fertilInicio: addDias(inicioCicloAtual, fertilInicio - 1),
+        fertilFim: addDias(inicioCicloAtual, fertilFim - 1),
+        ovulacao: addDias(inicioCicloAtual, ovulacaoDia - 1),
+        proximaMenstruacao: addDias(inicioCicloAtual, duracaoCiclo),
+      };
+    },
+
+    abrirEditarCiclo() {
+      this.editandoCiclo = true;
+      this.formCiclo = {
+        data_inicio: new Date().toISOString().slice(0, 10),
+        duracao_periodo: this.ciclo?.duracao_periodo || 5,
+        duracao_ciclo: this.ciclo?.duracao_ciclo || 28,
+      };
+    },
+
+    async salvarCiclo() {
+      const f = this.formCiclo;
+      if (!f.data_inicio) return alert("Informe a data de início do período.");
+      const { error } = await supabase.from("ciclos_menstruais").insert({
+        user_id: this.uid,
+        data_inicio: f.data_inicio,
+        duracao_periodo: Number(f.duracao_periodo) || 5,
+        duracao_ciclo: Number(f.duracao_ciclo) || 28,
+      });
+      if (error) return alert("Erro ao salvar ciclo: " + error.message);
+      this.editandoCiclo = false;
+      await this.loadDashboard();
+    },
+
+    intimoDoDia(dataISO) {
+      return this.registrosIntimos.find((r) => r.data === dataISO) || null;
+    },
+
+    async salvarIntimo(dataISO, preservativo) {
+      const { error } = await supabase
+        .from("registros_intimos")
+        .upsert({ user_id: this.uid, data: dataISO, preservativo }, { onConflict: "user_id,data" });
+      if (error) return alert("Erro ao salvar registro: " + error.message);
+      await this.loadDashboard();
+    },
+
+    async excluirIntimo(dataISO) {
+      const { error } = await supabase
+        .from("registros_intimos")
+        .delete()
+        .eq("user_id", this.uid)
+        .eq("data", dataISO);
+      if (error) return alert("Erro ao excluir registro: " + error.message);
+      await this.loadDashboard();
     },
 
     temConflito(dataISO) {

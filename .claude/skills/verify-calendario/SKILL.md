@@ -1,6 +1,6 @@
 ---
 name: verify-calendario
-description: Verifica o módulo de Calendário do Casa em Dia (feriados, permissões pessoal×trabalho, detecção de conflito, fuso horário, import de prazos). Gera relatório, corrige o que for seguro, e registra cada erro encontrado em lessons.md como item permanente — igual ao padrão da skill verify-casa-em-dia, mas focada só no calendário. Use quando o usuário disser "o calendário não está certo", "feriado errado", "conflito não apareceu", "Jéssica conseguiu editar trabalho", ou antes de declarar qualquer mudança no calendário como concluída.
+description: Verifica o módulo de Calendário do Casa em Dia (feriados, permissões pessoal×trabalho, detecção de conflito, fuso horário, import de prazos, fase da lua, ciclo menstrual da Jéssica). Gera relatório, corrige o que for seguro, e registra cada erro encontrado em lessons.md como item permanente — igual ao padrão da skill verify-casa-em-dia, mas focada só no calendário. Use quando o usuário disser "o calendário não está certo", "feriado errado", "conflito não apareceu", "Jéssica conseguiu editar trabalho", "fase da lua errada", "ciclo errado", ou antes de declarar qualquer mudança no calendário como concluída.
 ---
 
 # Verificação do Calendário — Casa em Dia
@@ -50,6 +50,22 @@ A função `importarPrazos` deve buscar por `ref_externa` antes de inserir (`sel
 
 ### 6. Visual: grade do ano não quebra com mês começando em dias diferentes da semana
 `diasDoMes(mesIndex)` usa `new Date(ano, mes, 1).getDay()` pra calcular células vazias antes do dia 1. Teste rápido: confirme visualmente que Janeiro e Fevereiro (meses com início de semana diferente) renderizam sem desalinhar a grade de 7 colunas.
+
+### 7. Fase da lua (adicionado 21/06/2026) está calculada certo pra qualquer ano
+`faseLua()`/`luaMarcante()` em `js/lua.js` usam idade da lua a partir de uma lua nova de referência (06/01/2000 18:14 UTC) + ciclo sinódico de 29.530588853 dias — não depende de tabela cadastrada, então funciona em qualquer ano passado/futuro. Teste rápido:
+```bash
+node -e "
+const ref = Date.UTC(2000,0,6,18,14), sin = 29.530588853;
+function fase(iso){ const [y,m,d]=iso.split('-').map(Number); const dt=Date.UTC(y,m-1,d,12); const idade=(((dt-ref)/86400000)%sin+sin)%sin; return idade.toFixed(1); }
+console.log('2026-06-21 (deveria ser por volta de nova/cheia, confira num site de fases da lua):', fase('2026-06-21'));
+"
+```
+Compare o resultado com um calendário lunar real (ex. timeanddate.com) pra essa data — se a fase relatada (`luaDoDia(dataISO).nome`) não bater com a realidade em mais de ~1 dia de diferença, o algoritmo ou a data de referência foi alterada incorretamente.
+
+### 8. Ciclo menstrual (adicionado 21/06/2026): cálculo de fase e RLS
+- `faseCicloDoDia()` e o getter `cicloInfo` em `js/app.js` calculam tudo client-side a partir de `ciclo.data_inicio` + `duracao_periodo` + `duracao_ciclo` — não há campo de "fase" salvo no banco, então um ciclo mal calculado é sempre bug de fórmula, não de dado. Fórmula: `ovulacaoDia = duracaoCiclo - 14`; período fértil = `ovulacaoDia - 5` até `ovulacaoDia + 1`.
+- As tabelas `ciclos_menstruais` e `registros_intimos` (`supabase/migration_ciclo.sql`) são dados sensíveis e devem ficar SEMPRE com RLS `using (auth.uid() = user_id)` — nunca abrir pra "all auth" como as tabelas financeiras. Confirme isso direto no SQL Editor (`select * from pg_policies where tablename in ('ciclos_menstruais','registros_intimos')`) sempre que tocar nessa parte.
+- Essas seções só devem aparecer no HTML quando `!isAdmin` — Ricardo (admin) nunca deve ver o painel de ciclo nem o registro íntimo, mesmo que ele logue.
 
 ## Depois de verificar: o relatório
 Mesmo formato da skill principal:
