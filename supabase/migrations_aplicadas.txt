@@ -6,3 +6,4 @@ migration_categorias_fk.sql | aplicada (pré-existente, antes deste arquivo de c
 migration_transferencia_interna.sql | aplicada (pré-existente, antes deste arquivo de controle — 22/06/2026)
 migration_parceladas.sql | aplicada (pré-existente, antes deste arquivo de controle — 22/06/2026)
 migration_competencia.sql | aplicada em 2026-06-22T00:00:00 (via pg8000, confirmada com query de colunas)
+migration_tarefas_joias.sql | aplicada em 2026-06-22T10:42:41

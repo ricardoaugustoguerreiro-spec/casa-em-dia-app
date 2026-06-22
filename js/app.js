@@ -81,6 +81,7 @@ Alpine.data("appState", () => ({
 
     // calendário
     events: [],
+    tarefasJoias: [], // sincronizado automaticamente do Sistema de Joias (Alfa 3D)
     anoCalendario: new Date().getFullYear(),
     diaSelecionado: null, // 'AAAA-MM-DD'
     eventoEditando: null,
@@ -227,7 +228,7 @@ Alpine.data("appState", () => ({
     },
 
     async loadDashboard() {
-      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }, { data: balances }, { data: comprasParceladas }] =
+      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }, { data: balances }, { data: comprasParceladas }, { data: tarefasJoias }] =
         await Promise.all([
           supabase.from("categories").select("*").order("name"),
           supabase.from("fixed_bills").select("*").order("due_day"),
@@ -238,6 +239,7 @@ Alpine.data("appState", () => ({
           supabase.from("registros_intimos").select("*").order("data", { ascending: false }),
           supabase.from("balances").select("*").order("as_of", { ascending: false }),
           supabase.from("compras_parceladas").select("*").order("parcela_inicio"),
+          supabase.from("tarefas_joias").select("*").order("prazo", { ascending: true, nullsFirst: false }),
         ]);
       this.categories = categories || [];
       this.fixedBills = fixedBills || [];
@@ -248,6 +250,7 @@ Alpine.data("appState", () => ({
       this.registrosIntimos = registrosIntimos || [];
       this.balances = balances || [];
       this.comprasParceladas = comprasParceladas || [];
+      this.tarefasJoias = tarefasJoias || [];
 
       const byAccount = {};
       for (const t of this.transactions) {
@@ -501,6 +504,29 @@ Alpine.data("appState", () => ({
 
     get totalParceladasDoMes() {
       return this.parceladasDoMes.reduce((s, c) => s + Number(c.valor_parcela), 0);
+    },
+
+    diffMeses(mesIni, mesFim) {
+      const [y1, m1] = mesIni.split("-").map(Number);
+      const [y2, m2] = mesFim.split("-").map(Number);
+      return (y2 - y1) * 12 + (m2 - m1);
+    },
+
+    // todas as parcelas ativas (não só as do mês selecionado), com progresso de quantas já passaram
+    get parceladasComProgresso() {
+      const hoje = this.hojeISO().slice(0, 7);
+      return this.comprasParceladas
+        .map((c) => {
+          const inicio = c.parcela_inicio.slice(0, 7);
+          const fim = c.parcela_fim.slice(0, 7);
+          const totalParcelas = this.diffMeses(inicio, fim) + 1;
+          const passadas = this.diffMeses(inicio, hoje) + 1;
+          const pagas = Math.max(0, Math.min(totalParcelas, passadas));
+          const restantes = totalParcelas - pagas;
+          const status = hoje < inicio ? "futura" : hoje > fim ? "concluida" : "ativa";
+          return { ...c, totalParcelas, pagas, restantes, status };
+        })
+        .sort((a, b) => a.parcela_inicio.localeCompare(b.parcela_inicio));
     },
 
     // ===================== AJUSTES (perfil, saldo, categorias) =====================
@@ -864,6 +890,15 @@ Alpine.data("appState", () => ({
     anoAnterior() { this.anoCalendario--; },
     anoSeguinte() { this.anoCalendario++; },
 
+    // toda vez que a aba Calendário é aberta, volta pro ano atual e rola até o mês atual
+    abrirCalendario() {
+      this.anoCalendario = new Date().getFullYear();
+      this.$nextTick(() => {
+        const el = document.getElementById("mes-card-" + new Date().getMonth());
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+
     diasDoMes(mesIndex) {
       const ano = this.anoCalendario;
       const primeiroDiaSemana = new Date(ano, mesIndex, 1).getDay();
@@ -1116,6 +1151,38 @@ Alpine.data("appState", () => ({
     async recarregarEventos() {
       const { data } = await supabase.from("events").select("*").order("starts_at");
       this.events = data || [];
+    },
+
+    // ===================== INTEGRAÇÃO COM O SISTEMA DE JOIAS (Alfa 3D) =====================
+    // tarefasJoias é sincronizado automaticamente (script agendado), nunca editado direto aqui.
+
+    get tarefasJoiasAbertas() {
+      return this.tarefasJoias.filter((t) => t.status === "aberto");
+    },
+
+    tarefasJoiasDoDia(dataISO) {
+      return this.tarefasJoias.filter((t) => t.prazo === dataISO && t.status === "aberto");
+    },
+
+    // ===================== PAINEL DE TAREFAS (dashboard pessoal) =====================
+
+    get tarefasDeHoje() {
+      const hoje = this.hojeISO();
+      return [
+        ...this.eventosDoDia(hoje).map((e) => ({ titulo: e.title, tipo: e.tipo === "trabalho" ? "Compromisso de trabalho" : "Compromisso", origem: "calendario" })),
+        ...this.tarefasJoiasDoDia(hoje).map((t) => ({ titulo: t.titulo, tipo: "Prazo de joia", origem: "sistema_joias" })),
+      ];
+    },
+
+    get trabalhosEmAberto() {
+      return [
+        ...this.events.filter((e) => e.tipo === "trabalho" && e.status_trabalho === "aberto").map((e) => ({ titulo: e.title, prazo: e.starts_at.slice(0, 10), origem: "calendario" })),
+        ...this.tarefasJoiasAbertas.map((t) => ({ titulo: t.titulo, prazo: t.prazo, origem: "sistema_joias" })),
+      ].sort((a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999"));
+    },
+
+    get conflitoHoje() {
+      return this.temConflito(this.hojeISO());
     },
 
     // métricas de produtividade (só sobre eventos tipo = trabalho)

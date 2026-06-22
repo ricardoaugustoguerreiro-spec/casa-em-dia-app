@@ -96,11 +96,57 @@
       </div>
     </header>
 
-    <div class="flex bg-gray-100 rounded-full p-1 mb-5 max-w-md">
+    <div class="flex bg-gray-100 rounded-full p-1 mb-5 max-w-lg">
+      <button @click="abaAtual='painel'" :class="abaAtual==='painel' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Painel</button>
       <button @click="abaAtual='financeiro'" :class="abaAtual==='financeiro' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Financeiro</button>
-      <button @click="abaAtual='calendario'" :class="abaAtual==='calendario' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Calendário</button>
+      <button @click="abaAtual='calendario'; abrirCalendario()" :class="abaAtual==='calendario' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Calendário</button>
       <button @click="abaAtual='ajustes'" :class="abaAtual==='ajustes' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Ajustes</button>
     </div>
+
+    <!-- PAINEL DE TAREFAS (dashboard pessoal) -->
+    <template x-if="!loadingData && abaAtual === 'painel'">
+      <div class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-3">📌 Tarefas de hoje</h2>
+          <div class="divide-y">
+            <template x-for="(t, i) in tarefasDeHoje" :key="i">
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <p class="font-medium truncate" x-text="t.titulo"></p>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase shrink-0" x-text="t.tipo"></span>
+              </div>
+            </template>
+            <p x-show="tarefasDeHoje.length === 0" class="text-xs text-gray-400 py-1">Nada marcado pra hoje. 🎉</p>
+          </div>
+        </section>
+
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-3">🛠️ Trabalhos em aberto</h2>
+          <div class="divide-y max-h-80 overflow-y-auto">
+            <template x-for="(t, i) in trabalhosEmAberto" :key="i">
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <div class="min-w-0">
+                  <p class="font-medium truncate" x-text="t.titulo"></p>
+                  <p class="text-xs text-gray-400" x-text="t.prazo ? 'Prazo ' + fmtData(t.prazo) : 'Sem prazo definido'"></p>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded-full uppercase shrink-0" :class="t.origem === 'sistema_joias' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'" x-text="t.origem === 'sistema_joias' ? 'joia' : 'agenda'"></span>
+              </div>
+            </template>
+            <p x-show="trabalhosEmAberto.length === 0" class="text-xs text-gray-400 py-1">Nenhum trabalho em aberto. 🎉</p>
+          </div>
+        </section>
+
+        <section class="rounded-2xl shadow-sm p-4" :class="conflitoHoje ? 'bg-red-50' : 'bg-white'">
+          <h2 class="text-sm font-semibold mb-1" :class="conflitoHoje ? 'text-red-700' : 'text-gray-700'">⚠️ Conflito de agenda hoje</h2>
+          <p class="text-sm" :class="conflitoHoje ? 'text-red-700 font-medium' : 'text-gray-400'" x-text="conflitoHoje ? 'Você tem compromissos com horário sobreposto hoje — revise no calendário.' : 'Nenhum conflito hoje.'"></p>
+        </section>
+
+        <section class="bg-amber-50 rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-amber-700 mb-1">⏳ Pendente nesse mês (financeiro)</h2>
+          <p class="text-lg font-semibold text-amber-800" x-text="fmtMoeda(pendenteEmContas.total)"></p>
+          <p class="text-xs text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)'"></p>
+        </section>
+      </div>
+    </template>
 
     <div x-show="loadingData" class="text-center text-gray-400 py-10">Carregando dados...</div>
 
@@ -334,13 +380,17 @@
               <h2 class="text-sm font-semibold text-gray-700">🧾 Compras parceladas no cartão</h2>
               <button @click="abrirNovaParcelada" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
             </div>
-            <p class="text-xs text-gray-500 mb-3" x-text="'Total de parcelas nesse mês: ' + fmtMoeda(totalParceladasDoMes)"></p>
+            <p class="text-xs text-gray-500 mb-1" x-text="'Total de parcelas em ' + nomeMesFinanceiro + ': ' + fmtMoeda(totalParceladasDoMes)"></p>
+            <p class="text-xs text-gray-400 mb-3" x-text="parceladasComProgresso.filter(c => c.status === 'ativa').length + ' parcela(s) ativa(s) no total, de ' + comprasParceladas.length + ' cadastrada(s)'"></p>
             <div class="divide-y">
-              <template x-for="c in parceladasDoMes" :key="c.id">
-                <div class="flex items-center justify-between gap-2 py-3">
+              <template x-for="c in parceladasComProgresso" :key="c.id">
+                <div class="flex items-center justify-between gap-2 py-3 flex-wrap">
                   <div class="min-w-0">
-                    <p class="font-medium truncate" x-text="c.descricao"></p>
-                    <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + 'até ' + fmtData(c.parcela_fim)"></p>
+                    <p class="font-medium flex items-center gap-2 flex-wrap">
+                      <span x-text="c.descricao"></span>
+                      <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? 'ativa' : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
+                    </p>
+                    <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + fmtData(c.parcela_inicio) + ' a ' + fmtData(c.parcela_fim) + ' · ' + c.pagas + '/' + c.totalParcelas + ' paga(s)' + (c.restantes > 0 ? ' · ' + c.restantes + ' restante(s)' : '')"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <p class="font-medium" x-text="fmtMoeda(c.valor_parcela)"></p>
@@ -350,7 +400,7 @@
                   </div>
                 </div>
               </template>
-              <p x-show="parceladasDoMes.length === 0" class="text-xs text-gray-400 py-2">Nenhuma parcela ativa nesse mês.</p>
+              <p x-show="comprasParceladas.length === 0" class="text-xs text-gray-400 py-2">Nenhuma compra parcelada cadastrada.</p>
             </div>
           </section>
         </template>
@@ -566,6 +616,7 @@
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>Compromisso conjunto</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>Trabalho</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block"></span>Feriado</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>Prazo do Sistema de Joias</span>
           <span class="flex items-center gap-1">🌕 Lua cheia/nova</span>
           <template x-if="!isAdmin">
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-pink-500 inline-block"></span>Menstruação</span>
@@ -577,7 +628,7 @@
 
         <div class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));">
           <template x-for="(nomeMes, mesIndex) in nomesMeses" :key="mesIndex">
-            <div class="bg-white rounded-2xl shadow-sm p-3">
+            <div :id="'mes-card-' + mesIndex" class="bg-white rounded-2xl shadow-sm p-3">
               <p class="text-sm font-semibold mb-2" x-text="nomeMes"></p>
               <div class="grid grid-cols-7 gap-0.5 text-[10px] text-gray-400 mb-1">
                 <span class="text-center">D</span><span class="text-center">S</span><span class="text-center">T</span><span class="text-center">Q</span><span class="text-center">Q</span><span class="text-center">S</span><span class="text-center">S</span>
@@ -602,6 +653,7 @@
                       <template x-if="dia && eventosDoDia(dia).some(e => e.conjunto)"><span class="w-1 h-1 rounded-full bg-blue-500"></span></template>
                       <template x-if="dia && eventosDoDia(dia).some(e => e.tipo === 'trabalho')"><span class="w-1 h-1 rounded-full bg-orange-500"></span></template>
                       <template x-if="dia && feriadoDoDia(dia)"><span class="w-1 h-1 rounded-full bg-gray-400"></span></template>
+                      <template x-if="dia && tarefasJoiasDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-amber-500"></span></template>
                       <template x-if="dia && !isAdmin && faseCicloDoDia(dia) === 'menstrual'"><span class="w-1 h-1 rounded-full bg-pink-500"></span></template>
                       <template x-if="dia && !isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')"><span class="w-1 h-1 rounded-full bg-teal-400"></span></template>
                     </span>
