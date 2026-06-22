@@ -7,10 +7,11 @@ envia o push direto do próprio computador, igual ao padrão já usado no backup
 Idempotente: cada notificação só é enviada uma vez (controlado pela tabela
 notificacoes_enviadas no banco).
 
-Regra de privacidade (espelha o RLS do banco):
+Regra de privacidade (espelha o RLS do banco, modelo de calendário individual):
   - Contas/prazos (fixed_bills/bill_payments): financeiro é compartilhado -> notifica todo mundo.
-  - Eventos tipo 'pessoal': visíveis pros dois -> notifica todo mundo.
-  - Eventos tipo 'trabalho' e conflitos (sempre envolvem um evento de trabalho): só admin (Ricardo) vê.
+  - Evento com conjunto=true: visível pros dois -> notifica todo mundo.
+  - Evento com conjunto=false: só quem é dono (owner_id) -> notifica só essa pessoa.
+  - Conflito entre dois eventos: notifica só quem consegue ver os DOIS eventos (dono de cada um, ou conjunto).
 
 Uso: python3 scripts/notificar.py
 Dependências: pip install requests pywebpush
@@ -95,10 +96,13 @@ def main():
     url, key, vapid_priv, vapid_claims = carregar_config()
     agora = datetime.now(timezone.utc)
 
-    profiles = {p["id"]: p for p in rest(url, key, "profiles", {"select": "id,display_name,role"})}
     subs = rest(url, key, "push_subscriptions", {"select": "id,user_id,endpoint,p256dh,auth"})
     subs_todos = subs
-    subs_admin = [s for s in subs if profiles.get(s["user_id"], {}).get("role") == "admin"]
+
+    def quem_ve(owner_id, conjunto):
+        if conjunto:
+            return subs_todos
+        return [s for s in subs_todos if s["user_id"] == owner_id]
 
     enviadas = 0
 
@@ -125,7 +129,7 @@ def main():
     eventos = rest(
         url, key, "events",
         {
-            "select": "id,title,starts_at,tipo",
+            "select": "id,title,starts_at,owner_id,conjunto",
             "starts_at": [f"gte.{agora.isoformat()}", f"lte.{(agora + timedelta(minutes=JANELA_EVENTO_MIN)).isoformat()}"],
         },
     )
@@ -133,7 +137,7 @@ def main():
         chave = f"evento:{ev['id']}"
         if ja_enviado(url, key, chave):
             continue
-        destino = subs_todos if ev["tipo"] == "pessoal" else subs_admin
+        destino = quem_ve(ev["owner_id"], ev["conjunto"])
         payload = {"title": "Compromisso em breve", "body": f"{ev['title']} começa às {ev['starts_at'][11:16]}.", "url": "./index.html"}
         if not destino:
             continue
@@ -141,28 +145,29 @@ def main():
             marcar_enviado(url, key, chave)
             enviadas += 1
 
-    # ---------- 3. Conflitos de agenda (pessoal x trabalho, só admin) ----------
+    # ---------- 3. Conflitos de agenda (qualquer par de eventos sobrepostos) ----------
     proximos_dias = [(agora + timedelta(days=d)).date().isoformat() for d in range(0, 3)]
     todos_eventos = rest(
         url, key, "events",
-        {"select": "id,title,starts_at,ends_at,tipo", "starts_at": f"gte.{proximos_dias[0]}", "ends_at": f"lte.{proximos_dias[-1]}T23:59:59"},
+        {"select": "id,title,starts_at,ends_at,owner_id,conjunto", "starts_at": f"gte.{proximos_dias[0]}", "ends_at": f"lte.{proximos_dias[-1]}T23:59:59"},
     )
-    pessoais = [e for e in todos_eventos if e["tipo"] == "pessoal"]
-    trabalho = [e for e in todos_eventos if e["tipo"] == "trabalho"]
-    for p in pessoais:
-        for t in trabalho:
-            if p["starts_at"] < t["ends_at"] and t["starts_at"] < p["ends_at"]:
-                chave = f"conflito:{p['id']}:{t['id']}"
+    for i, a in enumerate(todos_eventos):
+        for b in todos_eventos[i + 1:]:
+            if a["starts_at"] < b["ends_at"] and b["starts_at"] < a["ends_at"]:
+                chave = f"conflito:{a['id']}:{b['id']}"
                 if ja_enviado(url, key, chave):
+                    continue
+                vendo_a = {s["id"] for s in quem_ve(a["owner_id"], a["conjunto"])}
+                vendo_b = {s["id"] for s in quem_ve(b["owner_id"], b["conjunto"])}
+                destino = [s for s in subs_todos if s["id"] in vendo_a and s["id"] in vendo_b]
+                if not destino:
                     continue
                 payload = {
                     "title": "Conflito de agenda",
-                    "body": f"\"{p['title']}\" (pessoal) bate com \"{t['title']}\" (trabalho).",
+                    "body": f"\"{a['title']}\" bate com \"{b['title']}\".",
                     "url": "./index.html",
                 }
-                if not subs_admin:
-                    continue
-                if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_admin):
+                if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in destino):
                     marcar_enviado(url, key, chave)
                     enviadas += 1
 

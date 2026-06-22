@@ -63,13 +63,14 @@ Alpine.data("appState", () => ({
     anoCalendario: new Date().getFullYear(),
     diaSelecionado: null, // 'AAAA-MM-DD'
     eventoEditando: null,
-    formEvento: { title: "", data: "", hora_inicio: "09:00", hora_fim: "10:00", tipo: "pessoal", location: "", notes: "", status_trabalho: "aberto" },
+    formEvento: { title: "", data: "", hora_inicio: "09:00", hora_fim: "10:00", tipo: "pessoal", conjunto: false, location: "", notes: "", status_trabalho: "aberto" },
 
-    // ciclo menstrual (privado, só de quem registra) + registro íntimo
-    ciclo: null,
+    // ciclo menstrual (privado, marcado dia a dia) + registro íntimo
+    diasMenstruacao: [],
+    duracaoCicloPadrao: 28,
+    editandoDuracaoCiclo: false,
+    formDuracaoCiclo: 28,
     registrosIntimos: [],
-    editandoCiclo: false,
-    formCiclo: { data_inicio: "", duracao_periodo: 5, duracao_ciclo: 28 },
 
     async init() {
       this.atualizarStatusNotificacao();
@@ -203,14 +204,14 @@ Alpine.data("appState", () => ({
     },
 
     async loadDashboard() {
-      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: ciclos }, { data: registrosIntimos }] =
+      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }] =
         await Promise.all([
           supabase.from("categories").select("*").order("name"),
           supabase.from("fixed_bills").select("*").order("due_day"),
           supabase.from("bill_payments").select("*").order("due_date", { ascending: false }),
           supabase.from("transactions").select("*").order("date", { ascending: false }),
           supabase.from("events").select("*").order("starts_at"),
-          supabase.from("ciclos_menstruais").select("*").order("data_inicio", { ascending: false }).limit(1),
+          supabase.from("dias_menstruacao").select("*").order("data"),
           supabase.from("registros_intimos").select("*").order("data", { ascending: false }),
         ]);
       this.categories = categories || [];
@@ -218,7 +219,7 @@ Alpine.data("appState", () => ({
       this.billPayments = billPayments || [];
       this.transactions = transactions || [];
       this.events = events || [];
-      this.ciclo = (ciclos && ciclos[0]) || null;
+      this.diasMenstruacao = diasMenstruacao || [];
       this.registrosIntimos = registrosIntimos || [];
 
       const byAccount = {};
@@ -358,6 +359,14 @@ Alpine.data("appState", () => ({
       return dataISO ? nomeFeriado(dataISO) : null;
     },
 
+    hojeISO() {
+      return new Date().toISOString().slice(0, 10);
+    },
+
+    ehHoje(dataISO) {
+      return dataISO === this.hojeISO();
+    },
+
     luaDoDia(dataISO) {
       return dataISO ? faseLua(dataISO) : null;
     },
@@ -366,84 +375,120 @@ Alpine.data("appState", () => ({
       return dataISO ? luaMarcante(dataISO) : null;
     },
 
-    // ===================== CICLO MENSTRUAL (privado) =====================
+    // ===================== CICLO MENSTRUAL (privado, marcado dia a dia) =====================
+
+    addDias(dataISO, n) {
+      const d = new Date(dataISO + "T00:00:00");
+      d.setDate(d.getDate() + n);
+      return d.toISOString().slice(0, 10);
+    },
+
+    diffDias(de, para) {
+      return Math.round((new Date(para + "T00:00:00") - new Date(de + "T00:00:00")) / 86400000);
+    },
+
+    diaDeMenstruacao(dataISO) {
+      return this.diasMenstruacao.some((d) => d.data === dataISO);
+    },
+
+    async marcarDiaMenstruacao(dataISO) {
+      if (this.diaDeMenstruacao(dataISO)) {
+        const { error } = await supabase.from("dias_menstruacao").delete().eq("user_id", this.uid).eq("data", dataISO);
+        if (error) return alert("Erro ao desmarcar: " + error.message);
+      } else {
+        const { error } = await supabase.from("dias_menstruacao").insert({ user_id: this.uid, data: dataISO });
+        if (error) return alert("Erro ao marcar: " + error.message);
+      }
+      await this.loadDashboard();
+    },
+
+    // agrupa os dias marcados em "ciclos" (sequências consecutivas) pra aprender a duração real
+    get streaksMenstruacao() {
+      const datas = [...new Set(this.diasMenstruacao.map((d) => d.data))].sort();
+      const streaks = [];
+      for (const d of datas) {
+        const atual = streaks[streaks.length - 1];
+        if (atual && this.addDias(atual.fim, 1) === d) {
+          atual.fim = d;
+          atual.duracao++;
+        } else {
+          streaks.push({ inicio: d, fim: d, duracao: 1 });
+        }
+      }
+      return streaks;
+    },
+
+    get configCiclo() {
+      const streaks = this.streaksMenstruacao;
+      if (!streaks.length) return null;
+      const ultimo = streaks[streaks.length - 1];
+      let duracaoCiclo = this.duracaoCicloPadrao;
+      if (streaks.length >= 2) {
+        const gaps = [];
+        for (let i = 1; i < streaks.length; i++) gaps.push(this.diffDias(streaks[i - 1].inicio, streaks[i].inicio));
+        duracaoCiclo = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
+      }
+      const duracaoPeriodo = Math.round(streaks.reduce((a, s) => a + s.duracao, 0) / streaks.length) || 5;
+      return { inicioUltimoCiclo: ultimo.inicio, duracaoCiclo, duracaoPeriodo, baseadoEmHistorico: streaks.length >= 2 };
+    },
 
     faseCicloDoDia(dataISO) {
-      if (!this.ciclo || !dataISO) return null;
-      const inicio = new Date(this.ciclo.data_inicio + "T00:00:00");
-      const dia = new Date(dataISO + "T00:00:00");
-      const duracaoCiclo = this.ciclo.duracao_ciclo;
-      const duracaoPeriodo = this.ciclo.duracao_periodo;
-      const diff = Math.floor((dia - inicio) / 86400000);
+      if (!dataISO) return null;
+      if (this.diaDeMenstruacao(dataISO)) return "menstrual";
+      const cfg = this.configCiclo;
+      if (!cfg) return null;
+      const diff = this.diffDias(cfg.inicioUltimoCiclo, dataISO);
+      const duracaoCiclo = cfg.duracaoCiclo;
       const diaDoCiclo = (((diff % duracaoCiclo) + duracaoCiclo) % duracaoCiclo) + 1;
       const ovulacaoDia = duracaoCiclo - 14;
       const fertilInicio = ovulacaoDia - 5;
       const fertilFim = ovulacaoDia + 1;
-      if (diaDoCiclo <= duracaoPeriodo) return "menstrual";
       if (diaDoCiclo === ovulacaoDia) return "ovulacao";
       if (diaDoCiclo >= fertilInicio && diaDoCiclo <= fertilFim) return "fertil";
       return null;
     },
 
     get cicloInfo() {
-      if (!this.ciclo) return null;
-      const inicio = new Date(this.ciclo.data_inicio + "T00:00:00");
-      const hoje = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00");
-      const duracaoCiclo = this.ciclo.duracao_ciclo;
-      const duracaoPeriodo = this.ciclo.duracao_periodo;
-      const diasDesdeInicio = Math.floor((hoje - inicio) / 86400000);
-      const diaDoCiclo = (((diasDesdeInicio % duracaoCiclo) + duracaoCiclo) % duracaoCiclo) + 1;
+      const cfg = this.configCiclo;
+      if (!cfg) return null;
+      const hoje = this.hojeISO();
+      const diff = this.diffDias(cfg.inicioUltimoCiclo, hoje);
+      const duracaoCiclo = cfg.duracaoCiclo;
+      const diaDoCiclo = (((diff % duracaoCiclo) + duracaoCiclo) % duracaoCiclo) + 1;
       const ovulacaoDia = duracaoCiclo - 14;
       const fertilInicio = ovulacaoDia - 5;
       const fertilFim = ovulacaoDia + 1;
 
       let fase;
-      if (diaDoCiclo <= duracaoPeriodo) fase = "Menstruação";
+      if (this.diaDeMenstruacao(hoje)) fase = "Menstruação";
       else if (diaDoCiclo === ovulacaoDia) fase = "Ovulação";
       else if (diaDoCiclo >= fertilInicio && diaDoCiclo <= fertilFim) fase = "Período fértil";
       else if (diaDoCiclo < fertilInicio) fase = "Fase folicular";
       else fase = "Fase lútea";
 
-      const ciclosCompletos = Math.floor(diasDesdeInicio / duracaoCiclo) + 1;
-      const addDias = (data, n) => {
-        const d = new Date(data);
-        d.setDate(d.getDate() + n);
-        return d.toISOString().slice(0, 10);
-      };
-      const inicioCicloAtual = addDias(inicio, (ciclosCompletos - 1) * duracaoCiclo);
+      const ciclosCompletos = Math.floor(diff / duracaoCiclo) + 1;
+      const inicioCicloAtual = this.addDias(cfg.inicioUltimoCiclo, (ciclosCompletos - 1) * duracaoCiclo);
 
       return {
         diaDoCiclo,
         duracaoCiclo,
         fase,
-        fertilInicio: addDias(inicioCicloAtual, fertilInicio - 1),
-        fertilFim: addDias(inicioCicloAtual, fertilFim - 1),
-        ovulacao: addDias(inicioCicloAtual, ovulacaoDia - 1),
-        proximaMenstruacao: addDias(inicioCicloAtual, duracaoCiclo),
+        baseadoEmHistorico: cfg.baseadoEmHistorico,
+        fertilInicio: this.addDias(inicioCicloAtual, fertilInicio - 1),
+        fertilFim: this.addDias(inicioCicloAtual, fertilFim - 1),
+        ovulacao: this.addDias(inicioCicloAtual, ovulacaoDia - 1),
+        proximaMenstruacao: this.addDias(inicioCicloAtual, duracaoCiclo),
       };
     },
 
-    abrirEditarCiclo() {
-      this.editandoCiclo = true;
-      this.formCiclo = {
-        data_inicio: new Date().toISOString().slice(0, 10),
-        duracao_periodo: this.ciclo?.duracao_periodo || 5,
-        duracao_ciclo: this.ciclo?.duracao_ciclo || 28,
-      };
+    abrirEditarDuracaoCiclo() {
+      this.formDuracaoCiclo = this.configCiclo?.duracaoCiclo || this.duracaoCicloPadrao;
+      this.editandoDuracaoCiclo = true;
     },
 
-    async salvarCiclo() {
-      const f = this.formCiclo;
-      if (!f.data_inicio) return alert("Informe a data de início do período.");
-      const { error } = await supabase.from("ciclos_menstruais").insert({
-        user_id: this.uid,
-        data_inicio: f.data_inicio,
-        duracao_periodo: Number(f.duracao_periodo) || 5,
-        duracao_ciclo: Number(f.duracao_ciclo) || 28,
-      });
-      if (error) return alert("Erro ao salvar ciclo: " + error.message);
-      this.editandoCiclo = false;
-      await this.loadDashboard();
+    salvarDuracaoCiclo() {
+      this.duracaoCicloPadrao = Number(this.formDuracaoCiclo) || 28;
+      this.editandoDuracaoCiclo = false;
     },
 
     intimoDoDia(dataISO) {
@@ -468,15 +513,13 @@ Alpine.data("appState", () => ({
       await this.loadDashboard();
     },
 
+    // conflito = dois eventos que eu vejo (meus ou conjuntos) com horário sobreposto no mesmo dia
     temConflito(dataISO) {
       const evs = this.eventosDoDia(dataISO);
-      const pessoal = evs.filter((e) => e.tipo === "pessoal");
-      const trabalho = evs.filter((e) => e.tipo === "trabalho");
-      for (const p of pessoal) {
-        for (const t of trabalho) {
-          if (new Date(p.starts_at) < new Date(t.ends_at) && new Date(t.starts_at) < new Date(p.ends_at)) {
-            return true;
-          }
+      for (let i = 0; i < evs.length; i++) {
+        for (let j = i + 1; j < evs.length; j++) {
+          const a = evs[i], b = evs[j];
+          if (new Date(a.starts_at) < new Date(b.ends_at) && new Date(b.starts_at) < new Date(a.ends_at)) return true;
         }
       }
       return false;
@@ -486,7 +529,7 @@ Alpine.data("appState", () => ({
       if (!dataISO) return;
       this.diaSelecionado = dataISO;
       this.eventoEditando = null;
-      this.formEvento = { title: "", data: dataISO, hora_inicio: "09:00", hora_fim: "10:00", tipo: "pessoal", location: "", notes: "", status_trabalho: "aberto" };
+      this.formEvento = { title: "", data: dataISO, hora_inicio: "09:00", hora_fim: "10:00", tipo: "pessoal", conjunto: false, location: "", notes: "", status_trabalho: "aberto" };
     },
 
     editarEvento(ev) {
@@ -498,6 +541,7 @@ Alpine.data("appState", () => ({
         hora_inicio: ev.starts_at.slice(11, 16),
         hora_fim: ev.ends_at.slice(11, 16),
         tipo: ev.tipo,
+        conjunto: ev.conjunto,
         location: ev.location || "",
         notes: ev.notes || "",
         status_trabalho: ev.status_trabalho || "aberto",
@@ -505,23 +549,24 @@ Alpine.data("appState", () => ({
     },
 
     podeEditar(ev) {
-      return this.isAdmin || ev.tipo === "pessoal";
+      return ev.owner_id === this.uid || ev.conjunto;
     },
 
     async salvarEvento() {
       const f = this.formEvento;
       if (!f.title || !f.data) return alert("Preencha pelo menos o título e a data.");
-      if (f.tipo === "trabalho" && !this.isAdmin) return alert("Só o administrador pode criar eventos de trabalho.");
       const payload = {
         title: f.title,
         starts_at: `${f.data}T${f.hora_inicio}:00`,
         ends_at: `${f.data}T${f.hora_fim}:00`,
         tipo: f.tipo,
+        conjunto: !!f.conjunto,
         location: f.location || null,
         notes: f.notes || null,
         status_trabalho: f.tipo === "trabalho" ? f.status_trabalho : null,
         origem: this.eventoEditando?.origem || "manual",
       };
+      if (!this.eventoEditando) payload.owner_id = this.uid;
       let error;
       if (this.eventoEditando) {
         ({ error } = await supabase.from("events").update(payload).eq("id", this.eventoEditando.id));
@@ -580,6 +625,7 @@ Alpine.data("appState", () => ({
             starts_at: `${item.prazo}T09:00:00`,
             ends_at: `${item.prazo}T10:00:00`,
             tipo: "trabalho",
+            conjunto: false,
             origem: "formulario_vinculado",
             ref_externa: item.id,
             status_trabalho: item.status || "aberto",
@@ -588,7 +634,7 @@ Alpine.data("appState", () => ({
             await supabase.from("events").update(payload).eq("id", existente.id);
             atualizados++;
           } else {
-            await supabase.from("events").insert(payload);
+            await supabase.from("events").insert({ ...payload, owner_id: this.uid });
             criados++;
           }
         }

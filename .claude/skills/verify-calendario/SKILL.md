@@ -35,15 +35,15 @@ curl -s -X DELETE "$URL/rest/v1/events?id=eq.$ID" -H "apikey: $KEY" -H "Authoriz
 ```
 Esperado: `starts_at` volta exatamente `2026-06-22T09:00:00+00:00` — se vier com hora diferente de `09:00`, há um bug de fuso introduzido.
 
-### 3. RLS: Jéssica (não-admin) não pode criar/editar evento `tipo='trabalho'`
+### 3. RLS: calendário individual — cada um só vê o próprio evento, exceto quando `conjunto=true` (mudou em 22/06/2026)
+O modelo antigo (RLS por `tipo='trabalho'`+admin) foi substituído por dono+conjunto: `owner_id = auth.uid() or conjunto = true`. Confirme:
 ```bash
-# confirme lendo a policy diretamente no SQL Editor do Supabase, ou:
-grep -A5 "Insert personal events or admin" "/h/Meu Drive/FINANÇAS/Casa-em-Dia-App/supabase/migration.sql"
+grep -A5 "Read own or conjunto events\|Insert own events" "/h/Meu Drive/FINANÇAS/Casa-em-Dia-App/supabase/migration_calendario_individual.sql"
 ```
-A policy deve exigir `tipo = 'pessoal' or public.is_admin()`. Também confirme no `js/app.js` que `salvarEvento()` bloqueia no cliente (`if (f.tipo === "trabalho" && !this.isAdmin) return alert(...)`) — dupla camada (UI + banco), nenhuma das duas deve faltar.
+Teste real: como Jéssica (ou simulando), um evento criado por Ricardo com `conjunto=false` NÃO deve aparecer pra ela; com `conjunto=true` deve aparecer pros dois. `js/app.js` → `salvarEvento()` deve sempre mandar `owner_id: this.uid` em eventos novos (nunca deixar o cliente mandar outro `owner_id`), e `podeEditar(ev)` deve ser `ev.owner_id === this.uid || ev.conjunto` — não existe mais gating por `isAdmin`/`tipo` na edição.
 
 ### 4. Detecção de conflito usa overlap de horário real, não só "mesmo dia"
-Releia `temConflito(dataISO)` em `js/app.js` — deve comparar `starts_at`/`ends_at` de pares pessoal×trabalho com a fórmula de overlap (`p.starts < t.ends && t.starts < p.ends`), não só checar se existem eventos dos dois tipos no mesmo dia (isso geraria falso positivo pra dois eventos no mesmo dia em horários diferentes).
+Releia `temConflito(dataISO)` em `js/app.js` — desde 22/06/2026 compara QUALQUER par de eventos visíveis (não só pessoal×trabalho) com a fórmula de overlap (`a.starts < b.ends && b.starts < a.ends`). Como cada usuário só carrega os próprios eventos + conjuntos (RLS), o conflito calculado no cliente já reflete só o que aquele usuário pode ver — não precisa filtrar por tipo.
 
 ### 5. Import de prazos (JSON) não duplica ao reimportar o mesmo arquivo
 A função `importarPrazos` deve buscar por `ref_externa` antes de inserir (`select ... eq("ref_externa", item.id)`) e fazer `update` se já existir, `insert` só se não existir. Teste: importar o mesmo arquivo duas vezes e confirmar que a contagem de eventos não dobra.
@@ -62,10 +62,15 @@ console.log('2026-06-21 (deveria ser por volta de nova/cheia, confira num site d
 ```
 Compare o resultado com um calendário lunar real (ex. timeanddate.com) pra essa data — se a fase relatada (`luaDoDia(dataISO).nome`) não bater com a realidade em mais de ~1 dia de diferença, o algoritmo ou a data de referência foi alterada incorretamente.
 
-### 8. Ciclo menstrual (adicionado 21/06/2026): cálculo de fase e RLS
-- `faseCicloDoDia()` e o getter `cicloInfo` em `js/app.js` calculam tudo client-side a partir de `ciclo.data_inicio` + `duracao_periodo` + `duracao_ciclo` — não há campo de "fase" salvo no banco, então um ciclo mal calculado é sempre bug de fórmula, não de dado. Fórmula: `ovulacaoDia = duracaoCiclo - 14`; período fértil = `ovulacaoDia - 5` até `ovulacaoDia + 1`.
-- As tabelas `ciclos_menstruais` e `registros_intimos` (`supabase/migration_ciclo.sql`) são dados sensíveis e devem ficar SEMPRE com RLS `using (auth.uid() = user_id)` — nunca abrir pra "all auth" como as tabelas financeiras. Confirme isso direto no SQL Editor (`select * from pg_policies where tablename in ('ciclos_menstruais','registros_intimos')`) sempre que tocar nessa parte.
+### 8. Ciclo menstrual (redesenhado 22/06/2026): marcação dia a dia, não "início + duração estimada"
+- A tabela `ciclos_menstruais` (data_inicio fixa) foi REMOVIDA. Hoje a fonte de verdade é `dias_menstruacao` (um registro por dia marcado) — a Jéssica toca no dia, no painel do dia, em "Marcar como dia de menstruação". Se um dia marcado não aparecer destacado no calendário, confirme primeiro se o registro existe em `dias_menstruacao` antes de suspeitar do cálculo.
+- `streaksMenstruacao` (getter em `js/app.js`) agrupa os dias marcados em sequências consecutivas; `configCiclo` deriva `duracaoCiclo` (média dos intervalos entre o início de cada sequência) e `duracaoPeriodo` (média da duração das sequências) — só fica "baseado em histórico" com 2+ sequências registradas; com menos que isso, usa o padrão ajustável em `duracaoCicloPadrao` (client-side, não persiste no banco, é só uma estimativa de fallback).
+- `faseCicloDoDia(dataISO)` retorna `"menstrual"` direto de `dias_menstruacao` quando o dia está logado (exato, não previsto) — só usa a fórmula `ovulacaoDia = duracaoCiclo - 14` pra prever período fértil/ovulação em dias futuros ou sem registro direto.
+- As tabelas `dias_menstruacao` e `registros_intimos` (`supabase/migration_ciclo.sql` + `migration_calendario_individual.sql`) são dados sensíveis e devem ficar SEMPRE com RLS `using (auth.uid() = user_id)` — nunca abrir pra "all auth" como as tabelas financeiras. Confirme isso direto no SQL Editor (`select * from pg_policies where tablename in ('dias_menstruacao','registros_intimos')`) sempre que tocar nessa parte.
 - Essas seções só devem aparecer no HTML quando `!isAdmin` — Ricardo (admin) nunca deve ver o painel de ciclo nem o registro íntimo, mesmo que ele logue.
+
+### 9. Destaque do dia de hoje
+O grid do calendário deve sempre marcar visualmente a data de hoje (`ehHoje(dataISO)` em `js/app.js`, comparando com `hojeISO()`) com um anel (`ring-2 ring-rose-400`), mesmo quando nenhum dia está selecionado. Teste: abrir o calendário sem clicar em nada e confirmar que o dia atual já aparece destacado, sem precisar procurar.
 
 ## Depois de verificar: o relatório
 Mesmo formato da skill principal:

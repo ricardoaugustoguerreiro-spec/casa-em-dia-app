@@ -211,40 +211,37 @@
         <div x-show="!isAdmin" class="bg-white rounded-2xl shadow-sm p-4 mb-6">
           <div class="flex items-center justify-between mb-2">
             <p class="text-sm font-semibold text-gray-700">Ciclo</p>
-            <button @click="abrirEditarCiclo" class="text-xs text-rose-600 font-medium">Registrar início do período</button>
+            <button @click="abrirEditarDuracaoCiclo" class="text-xs text-rose-600 font-medium">Ajustar duração média do ciclo</button>
           </div>
           <template x-if="cicloInfo">
             <div>
-              <p class="text-sm mb-1">Dia <span x-text="cicloInfo.diaDoCiclo"></span> do ciclo (<span x-text="cicloInfo.duracaoCiclo"></span> dias) · <span class="font-medium" x-text="cicloInfo.fase"></span></p>
+              <p class="text-sm mb-1">Dia <span x-text="cicloInfo.diaDoCiclo"></span> do ciclo (<span x-text="cicloInfo.duracaoCiclo"></span> dias<span x-show="cicloInfo.baseadoEmHistorico"> · calculado pelo seu histórico</span>) · <span class="font-medium" x-text="cicloInfo.fase"></span></p>
               <p class="text-xs text-gray-500">Período fértil provável: <span x-text="fmtData(cicloInfo.fertilInicio)"></span> a <span x-text="fmtData(cicloInfo.fertilFim)"></span></p>
               <p class="text-xs text-gray-500">Ovulação provável: <span x-text="fmtData(cicloInfo.ovulacao)"></span></p>
               <p class="text-xs text-gray-500">Próxima menstruação: por volta de <span x-text="fmtData(cicloInfo.proximaMenstruacao)"></span></p>
             </div>
           </template>
-          <p x-show="!cicloInfo" class="text-xs text-gray-400">Nenhum ciclo registrado ainda. Use "Registrar início do período" no primeiro dia da próxima menstruação.</p>
+          <p x-show="!cicloInfo" class="text-xs text-gray-400">Nenhum dia de menstruação marcado ainda. Toque num dia no calendário abaixo e marque "Dia de menstruação".</p>
         </div>
 
-        <!-- MODAL: registrar/editar ciclo -->
-        <div x-show="editandoCiclo" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="editandoCiclo = false">
+        <!-- MODAL: ajustar duração média do ciclo (usado até termos histórico suficiente, 2+ ciclos marcados) -->
+        <div x-show="editandoDuracaoCiclo" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="editandoDuracaoCiclo = false">
           <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
             <div class="flex items-center justify-between mb-3">
-              <p class="font-semibold">Registrar início do período</p>
-              <button @click="editandoCiclo = false" class="text-gray-400">✕</button>
+              <p class="font-semibold">Duração média do ciclo</p>
+              <button @click="editandoDuracaoCiclo = false" class="text-gray-400">✕</button>
             </div>
-            <form @submit.prevent="salvarCiclo" class="space-y-2">
-              <label class="block text-xs text-gray-500">Data do 1º dia da menstruação</label>
-              <input type="date" x-model="formCiclo.data_inicio" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-              <label class="block text-xs text-gray-500">Duração da menstruação (dias)</label>
-              <input type="number" min="1" max="15" x-model="formCiclo.duracao_periodo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-              <label class="block text-xs text-gray-500">Duração média do ciclo (dias)</label>
-              <input type="number" min="15" max="45" x-model="formCiclo.duracao_ciclo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+            <form @submit.prevent="salvarDuracaoCiclo" class="space-y-2">
+              <p class="text-xs text-gray-500">Usada só pra estimativas enquanto você não tem 2 ciclos marcados ainda — depois disso o app calcula sozinho pelo seu histórico.</p>
+              <input type="number" min="15" max="45" x-model="formDuracaoCiclo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
           </div>
         </div>
 
         <div class="flex flex-wrap gap-4 text-xs mb-4">
-          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span>Pessoal</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block"></span>Meu compromisso</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>Compromisso conjunto</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>Trabalho</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block"></span>Feriado</span>
           <span class="flex items-center gap-1">🌕 Lua cheia/nova</span>
@@ -269,14 +266,18 @@
                     @click="selecionarDia(dia)"
                     :disabled="!dia"
                     class="aspect-square text-[10px] rounded-md flex flex-col items-center justify-center relative"
-                    :class="!dia ? 'invisible' : (diaSelecionado === dia ? 'bg-rose-500 text-white' : temConflito(dia) ? 'bg-red-100' : (!isAdmin && faseCicloDoDia(dia) === 'menstrual') ? 'bg-pink-100' : (!isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')) ? 'bg-teal-50' : feriadoDoDia(dia) ? 'bg-gray-100' : 'hover:bg-gray-50'"
+                    :class="[
+                      !dia ? 'invisible' : (diaSelecionado === dia ? 'bg-rose-500 text-white' : temConflito(dia) ? 'bg-red-100' : (!isAdmin && faseCicloDoDia(dia) === 'menstrual') ? 'bg-pink-100' : (!isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')) ? 'bg-teal-50' : feriadoDoDia(dia) ? 'bg-gray-100' : 'hover:bg-gray-50',
+                      dia && ehHoje(dia) && diaSelecionado !== dia ? 'ring-2 ring-rose-400' : '',
+                    ]"
                   >
                     <span class="flex items-center gap-0.5">
                       <span x-text="dia ? parseInt(dia.slice(8,10)) : ''"></span>
                       <template x-if="dia && luaMarcanteDoDia(dia)"><span x-text="luaDoDia(dia).emoji"></span></template>
                     </span>
                     <span class="flex gap-0.5 mt-0.5">
-                      <template x-if="dia && eventosDoDia(dia).some(e => e.tipo === 'pessoal')"><span class="w-1 h-1 rounded-full bg-violet-500"></span></template>
+                      <template x-if="dia && eventosDoDia(dia).some(e => e.owner_id === uid && !e.conjunto)"><span class="w-1 h-1 rounded-full bg-violet-500"></span></template>
+                      <template x-if="dia && eventosDoDia(dia).some(e => e.conjunto)"><span class="w-1 h-1 rounded-full bg-blue-500"></span></template>
                       <template x-if="dia && eventosDoDia(dia).some(e => e.tipo === 'trabalho')"><span class="w-1 h-1 rounded-full bg-orange-500"></span></template>
                       <template x-if="dia && feriadoDoDia(dia)"><span class="w-1 h-1 rounded-full bg-gray-400"></span></template>
                       <template x-if="dia && !isAdmin && faseCicloDoDia(dia) === 'menstrual'"><span class="w-1 h-1 rounded-full bg-pink-500"></span></template>
@@ -293,11 +294,22 @@
         <div x-show="diaSelecionado" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="diaSelecionado = null">
           <div class="bg-white rounded-2xl shadow-lg w-full max-w-md max-h-[85vh] overflow-y-auto p-5">
             <div class="flex items-center justify-between mb-3">
-              <p class="font-semibold" x-text="diaSelecionado ? fmtData(diaSelecionado) : ''"></p>
+              <p class="font-semibold flex items-center gap-2">
+                <span x-text="diaSelecionado ? fmtData(diaSelecionado) : ''"></span>
+                <span x-show="diaSelecionado && ehHoje(diaSelecionado)" class="text-[10px] bg-rose-100 text-rose-600 rounded-full px-2 py-0.5">Hoje</span>
+              </p>
               <button @click="diaSelecionado = null" class="text-gray-400">✕</button>
             </div>
             <p x-show="diaSelecionado && feriadoDoDia(diaSelecionado)" class="text-xs text-gray-500 mb-1" x-text="'Feriado: ' + (diaSelecionado ? feriadoDoDia(diaSelecionado) : '')"></p>
             <p x-show="diaSelecionado" class="text-xs text-gray-500 mb-3" x-text="diaSelecionado ? (luaDoDia(diaSelecionado).emoji + ' ' + luaDoDia(diaSelecionado).nome) : ''"></p>
+
+            <!-- marcação diária de menstruação (privado, só não-admin) -->
+            <div x-show="!isAdmin && diaSelecionado" class="rounded-xl border border-pink-100 bg-pink-50/60 px-3 py-2 mb-3">
+              <button type="button" @click="marcarDiaMenstruacao(diaSelecionado)" class="text-xs px-3 py-1.5 rounded-full w-full"
+                :class="diaSelecionado && diaDeMenstruacao(diaSelecionado) ? 'bg-pink-500 text-white' : 'bg-white border border-pink-200 text-pink-700'">
+                🩸 <span x-text="diaSelecionado && diaDeMenstruacao(diaSelecionado) ? 'Dia de menstruação (toque pra desmarcar)' : 'Marcar como dia de menstruação'"></span>
+              </button>
+            </div>
 
             <!-- registro íntimo (privado, só não-admin) -->
             <div x-show="!isAdmin && diaSelecionado" class="rounded-xl border border-pink-100 bg-pink-50/60 px-3 py-2 mb-4">
@@ -322,7 +334,7 @@
                 <div class="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2">
                   <div class="min-w-0">
                     <p class="text-sm font-medium truncate" x-text="ev.title"></p>
-                    <p class="text-xs text-gray-400" x-text="ev.starts_at.slice(11,16) + '–' + ev.ends_at.slice(11,16) + ' · ' + (ev.tipo === 'pessoal' ? 'Pessoal' : 'Trabalho')"></p>
+                    <p class="text-xs text-gray-400" x-text="ev.starts_at.slice(11,16) + '–' + ev.ends_at.slice(11,16) + ' · ' + (ev.tipo === 'pessoal' ? 'Pessoal' : 'Trabalho') + ' · ' + (ev.conjunto ? 'Conjunto' : (ev.owner_id === uid ? 'Só meu' : 'Só dela/dele'))"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0" x-show="podeEditar(ev)">
                     <button @click="editarEvento(ev)" class="text-xs text-gray-500">Editar</button>
@@ -340,7 +352,7 @@
                 <input type="time" x-model="formEvento.hora_inicio" class="w-1/2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
                 <input type="time" x-model="formEvento.hora_fim" class="w-1/2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               </div>
-              <select x-show="isAdmin" x-model="formEvento.tipo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              <select x-model="formEvento.tipo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
                 <option value="pessoal">Pessoal</option>
                 <option value="trabalho">Trabalho</option>
               </select>
@@ -349,6 +361,10 @@
                 <option value="concluido">Concluído</option>
                 <option value="atrasado">Atrasado</option>
               </select>
+              <label class="flex items-center gap-2 text-sm px-1 py-1">
+                <input type="checkbox" x-model="formEvento.conjunto" class="rounded" />
+                Compromisso conjunto (os dois vamos / os dois vemos)
+              </label>
               <input type="text" placeholder="Local (opcional)" x-model="formEvento.location" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <textarea placeholder="Notas (opcional)" x-model="formEvento.notes" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" rows="2"></textarea>
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium">Salvar</button>
