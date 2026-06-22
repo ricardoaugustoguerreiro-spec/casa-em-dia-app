@@ -1,0 +1,8 @@
+migration.sql | aplicada (pré-existente, antes deste arquivo de controle — 21/06/2026)
+migration_ciclo.sql | aplicada (pré-existente, antes deste arquivo de controle — 21/06/2026)
+migration_notificacoes.sql | aplicada (pré-existente, antes deste arquivo de controle — 21/06/2026)
+migration_calendario_individual.sql | aplicada (pré-existente, antes deste arquivo de controle — 22/06/2026)
+migration_categorias_fk.sql | aplicada (pré-existente, antes deste arquivo de controle — 22/06/2026)
+migration_transferencia_interna.sql | aplicada (pré-existente, antes deste arquivo de controle — 22/06/2026)
+migration_parceladas.sql | aplicada (pré-existente, antes deste arquivo de controle — 22/06/2026)
+migration_competencia.sql | aplicada em 2026-06-22T00:00:00 (via pg8000, confirmada com query de colunas)

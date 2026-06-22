@@ -64,9 +64,12 @@ Alpine.data("appState", () => ({
     formSaldo: { amount: "", notes: "" },
     formCategoria: { name: "", kind: "variavel", color: "#64748b" },
     criandoContaFixa: false,
-    formContaFixa: { name: "", amount: "", due_day: "10", category_id: "" },
+    formContaFixa: { name: "", amount: "", due_day: "10", category_id: "", vence_mes_seguinte: false },
+    editandoContaFixa: null,
     criandoTransacao: false,
     formTransacao: { description: "", amount: "", date: "", account: "", kind: "diaria", category_id: "" },
+    abaAnualAberta: null, // "AAAA-MM" do mês expandido na Visão Anual
+    anoVisaoAnual: new Date().getFullYear(),
     filtroCategoriaTransacao: "",
     editandoPagamento: null,
     formPagamento: { amount: "", due_date: "", status: "pendente" },
@@ -566,19 +569,30 @@ Alpine.data("appState", () => ({
       await this.garantirContasFixasDoMes(this.mesFinanceiro);
     },
 
+    // mês de competência (a que a despesa se refere) é separado do mês do due_date real:
+    // contas com vence_mes_seguinte=true (água/luz/internet/IPTU etc.) vencem no mês seguinte
+    // ao mês de competência, mesmo assim contam no total do mês de competência.
+    mesSeguinte(mes) {
+      const [ano, mesNum] = mes.split("-").map(Number);
+      const d = new Date(ano, mesNum, 1); // mesNum já é +1 mês (Date usa mês 0-based)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    },
+
     // como as contas são fixas (recorrem todo mês), já abre o bill_payment do mês
     // automaticamente ao navegar pra lá, em vez de exigir criação manual mês a mês.
     async garantirContasFixasDoMes(mes) {
-      const [ano, mesNum] = mes.split("-").map(Number);
-      const ultimoDiaDoMes = new Date(ano, mesNum, 0).getDate();
       const faltando = [];
       for (const bill of this.fixedBills.filter((b) => b.active !== false)) {
-        const jaExiste = this.billPayments.some((p) => p.fixed_bill_id === bill.id && p.due_date.slice(0, 7) === mes);
+        const jaExiste = this.billPayments.some((p) => p.fixed_bill_id === bill.id && (p.competencia || p.due_date.slice(0, 7)) === mes);
         if (jaExiste) continue;
-        const dia = Math.min(bill.due_day, ultimoDiaDoMes);
+        const mesVencimento = bill.vence_mes_seguinte ? this.mesSeguinte(mes) : mes;
+        const [anoV, mesNumV] = mesVencimento.split("-").map(Number);
+        const ultimoDiaDoMesVencimento = new Date(anoV, mesNumV, 0).getDate();
+        const dia = Math.min(bill.due_day, ultimoDiaDoMesVencimento);
         faltando.push({
           fixed_bill_id: bill.id,
-          due_date: `${mes}-${String(dia).padStart(2, "0")}`,
+          due_date: `${mesVencimento}-${String(dia).padStart(2, "0")}`,
+          competencia: mes,
           amount: bill.amount,
           status: "pendente",
         });
@@ -593,10 +607,70 @@ Alpine.data("appState", () => ({
       return `${this.nomesMeses[m - 1]} de ${y}`;
     },
 
+    // ===================== VISÃO ANUAL (timeline por mês de competência) =====================
+
+    anoVisaoAnualAnterior() { this.anoVisaoAnual--; },
+    anoVisaoAnualSeguinte() { this.anoVisaoAnual++; },
+
+    toggleMesAnual(mes) {
+      this.abaAnualAberta = this.abaAnualAberta === mes ? null : mes;
+    },
+
+    // junta contas fixas (por competência) + lançamentos avulsos (por data) num único timeline,
+    // ordenado pela data real (vencimento ou data do lançamento)
+    itensTimelineDoMes(mes) {
+      const itensContas = this.billPaymentsDoCompetencia(mes).map((p) => ({
+        data: p.due_date,
+        nome: this.billName(p.fixed_bill_id),
+        valor: Number(p.amount || 0),
+        status: p.status,
+        tipo: "conta_fixa",
+      }));
+      const itensTransacoes = this.transactions
+        .filter((t) => t.date.slice(0, 7) === mes && t.kind !== "renda" && !t.transferencia_interna)
+        .map((t) => ({ data: t.date, nome: t.description, valor: Number(t.amount), status: "pago", tipo: "lancamento" }));
+      return [...itensContas, ...itensTransacoes].sort((a, b) => a.data.localeCompare(b.data));
+    },
+
+    totalTimelineDoMes(mes) {
+      return this.itensTimelineDoMes(mes).reduce((s, i) => s + i.valor, 0);
+    },
+
+    get resumoAnual() {
+      const ano = this.anoVisaoAnual;
+      const meses = this.nomesMeses.map((nome, i) => {
+        const mes = `${ano}-${String(i + 1).padStart(2, "0")}`;
+        return { mes, nome, itens: this.itensTimelineDoMes(mes), total: this.totalTimelineDoMes(mes) };
+      });
+      const totalAno = meses.reduce((s, m) => s + m.total, 0);
+      return { meses, totalAno };
+    },
+
+    // garante que todo mês do ano selecionado já tenha os bill_payments gerados,
+    // pra timeline anual mostrar inclusive meses futuros ainda não visitados
+    async garantirAnoCompletoVisaoAnual() {
+      const ano = this.anoVisaoAnual;
+      for (let i = 0; i < 12; i++) {
+        const mes = `${ano}-${String(i + 1).padStart(2, "0")}`;
+        await this.garantirContasFixasDoMes(mes);
+      }
+    },
+
     get billPaymentsDoMes() {
+      return this.billPaymentsDoCompetencia(this.mesFinanceiro);
+    },
+
+    // mês de competência: usa o campo competencia; bill_payments antigos sem esse campo
+    // (de antes da migração) caem no fallback do mês do due_date.
+    billPaymentsDoCompetencia(mes) {
       return this.billPayments
-        .filter((p) => p.due_date.slice(0, 7) === this.mesFinanceiro)
+        .filter((p) => (p.competencia || p.due_date.slice(0, 7)) === mes)
         .sort((a, b) => a.due_date.localeCompare(b.due_date));
+    },
+
+    // navegação por clique nos cards superiores / cards de cartão
+    irPara(aba) {
+      this.abaFinanceiro = aba;
     },
 
     transacoesDoMes(filtroKind) {
@@ -611,13 +685,50 @@ Alpine.data("appState", () => ({
     // ===================== FINANCEIRO: contas fixas (CRUD completo) =====================
 
     abrirNovaContaFixa() {
-      this.formContaFixa = { name: "", amount: "", due_day: "10", category_id: "" };
+      this.formContaFixa = { name: "", amount: "", due_day: "10", category_id: "", vence_mes_seguinte: false };
+      this.editandoContaFixa = null;
+      this.criandoContaFixa = true;
+    },
+
+    abrirEditarContaFixa(bill) {
+      this.formContaFixa = {
+        name: bill.name,
+        amount: bill.amount,
+        due_day: bill.due_day,
+        category_id: bill.category_id || "",
+        vence_mes_seguinte: !!bill.vence_mes_seguinte,
+      };
+      this.editandoContaFixa = bill;
       this.criandoContaFixa = true;
     },
 
     async salvarContaFixa() {
       const f = this.formContaFixa;
       if (!f.name || !f.amount || !f.due_day) return alert("Preencha nome, valor e dia de vencimento.");
+      if (this.editandoContaFixa) {
+        const payload = {
+          name: f.name,
+          amount: Number(f.amount),
+          due_day: Number(f.due_day),
+          category_id: f.category_id || null,
+          vence_mes_seguinte: !!f.vence_mes_seguinte,
+        };
+        const { error } = await supabase.from("fixed_bills").update(payload).eq("id", this.editandoContaFixa.id);
+        if (error) return alert("Erro ao salvar conta fixa: " + error.message);
+        // atualiza também o pagamento pendente do mês selecionado, se existir, pra refletir na hora
+        const pagamentoDoMes = this.billPaymentsDoMes.find((p) => p.fixed_bill_id === this.editandoContaFixa.id && p.status === "pendente");
+        if (pagamentoDoMes) {
+          const mesVencimento = payload.vence_mes_seguinte ? this.mesSeguinte(this.mesFinanceiro) : this.mesFinanceiro;
+          const [anoV, mesNumV] = mesVencimento.split("-").map(Number);
+          const dia = Math.min(payload.due_day, new Date(anoV, mesNumV, 0).getDate());
+          const pagPayload = { amount: payload.amount, due_date: `${mesVencimento}-${String(dia).padStart(2, "0")}` };
+          await supabase.from("bill_payments").update(pagPayload).eq("id", pagamentoDoMes.id);
+        }
+        this.criandoContaFixa = false;
+        this.editandoContaFixa = null;
+        await this.loadDashboard();
+        return;
+      }
       const { data: bill, error } = await supabase
         .from("fixed_bills")
         .insert({
@@ -625,13 +736,15 @@ Alpine.data("appState", () => ({
           amount: Number(f.amount),
           due_day: Number(f.due_day),
           category_id: f.category_id || null,
+          vence_mes_seguinte: !!f.vence_mes_seguinte,
           created_by: this.uid,
         })
         .select()
         .single();
       if (error) return alert("Erro ao criar conta fixa: " + error.message);
-      const dueDate = `${this.mesFinanceiro}-${String(f.due_day).padStart(2, "0")}`;
-      await supabase.from("bill_payments").insert({ fixed_bill_id: bill.id, due_date: dueDate, amount: bill.amount, status: "pendente" });
+      const mesVencimento = bill.vence_mes_seguinte ? this.mesSeguinte(this.mesFinanceiro) : this.mesFinanceiro;
+      const dueDate = `${mesVencimento}-${String(f.due_day).padStart(2, "0")}`;
+      await supabase.from("bill_payments").insert({ fixed_bill_id: bill.id, due_date: dueDate, competencia: this.mesFinanceiro, amount: bill.amount, status: "pendente" });
       this.criandoContaFixa = false;
       await this.loadDashboard();
     },

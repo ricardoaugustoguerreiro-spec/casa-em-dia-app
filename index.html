@@ -115,15 +115,15 @@
 
         <!-- RESUMO DO MÊS SELECIONADO -->
         <div class="grid gap-3 mb-6" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-          <div class="rounded-2xl p-4 bg-white shadow-sm">
+          <div @click="irPara('resumo')" class="rounded-2xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition">
             <p class="text-xs text-gray-500 mb-1" x-text="'Gasto total · ' + nomeMesFinanceiro"></p>
             <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDoMes)"></p>
           </div>
-          <div class="rounded-2xl p-4 bg-white shadow-sm">
+          <div @click="irPara('dia_a_dia')" class="rounded-2xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition">
             <p class="text-xs text-gray-500 mb-1">Gasto da semana (hoje)</p>
             <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDaSemana)"></p>
           </div>
-          <div class="rounded-2xl p-4 bg-amber-50 shadow-sm">
+          <div @click="irPara('contas_fixas')" class="rounded-2xl p-4 bg-amber-50 shadow-sm cursor-pointer hover:shadow-md transition">
             <p class="text-xs text-amber-700 mb-1">Pendente nesse mês</p>
             <p class="text-lg font-semibold text-amber-800" x-text="fmtMoeda(pendenteEmContas.total)"></p>
             <p class="text-xs text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)'"></p>
@@ -148,6 +148,7 @@
           <button @click="abaFinanceiro='cartao_variaveis'" :class="abaFinanceiro==='cartao_variaveis' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Cartão / Variáveis</button>
           <button @click="abaFinanceiro='parceladas'" :class="abaFinanceiro==='parceladas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Parceladas</button>
           <button x-show="isAdmin" @click="abaFinanceiro='transferencias'" :class="abaFinanceiro==='transferencias' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Transferências</button>
+          <button @click="abaFinanceiro='anual'; garantirAnoCompletoVisaoAnual()" :class="abaFinanceiro==='anual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">📅 Visão Anual</button>
         </div>
 
         <!-- RESUMO -->
@@ -187,7 +188,7 @@
               <h2 class="text-sm font-semibold text-gray-700 mb-3">💳 Cartões e contas (total conjunto, desde sempre)</h2>
               <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
                 <template x-for="c in cardTotals" :key="c.nome">
-                  <div class="rounded-xl p-3 bg-gray-50" :data-card-value="c.total">
+                  <div @click="irPara('cartao_variaveis')" class="rounded-xl p-3 bg-gray-50 cursor-pointer hover:shadow transition" :data-card-value="c.total">
                     <p class="text-xs text-gray-500 mb-1" x-text="c.nome"></p>
                     <p class="font-semibold valor-animado">R$ 0</p>
                   </div>
@@ -225,11 +226,12 @@
                       <span x-text="billName(p.fixed_bill_id)"></span>
                       <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(p.status)" x-text="p.status"></span>
                     </p>
-                    <p class="text-xs text-gray-400" x-text="'Vence dia ' + p.due_date.slice(8,10) + ' · ' + fmtMoeda(p.amount)"></p>
+                    <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(p.due_date) + ' · ' + fmtMoeda(p.amount)"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarPago(p)" class="text-xs px-3 py-1.5 rounded-full border" :class="p.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="p.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
-                    <button @click="abrirEditarPagamento(p)" aria-label="Editar" class="text-gray-300 hover:text-gray-600 p-1">✎</button>
+                    <button @click="abrirEditarContaFixa(fixedBills.find(b => b.id === p.fixed_bill_id))" aria-label="Editar conta fixa" class="text-gray-300 hover:text-gray-600 p-1" title="Editar nome/valor/vencimento">✎</button>
+                    <button @click="abrirEditarPagamento(p)" aria-label="Editar pagamento deste mês" class="text-gray-300 hover:text-gray-600 p-1" title="Editar só este mês">📅</button>
                     <button @click="excluirContaFixa(p.fixed_bill_id)" aria-label="Excluir conta fixa" class="text-gray-300 hover:text-red-500 p-1">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
                     </button>
@@ -373,6 +375,49 @@
           </div>
         </div>
 
+        <!-- VISÃO ANUAL: timeline por mês de competência -->
+        <template x-if="abaFinanceiro === 'anual'">
+          <section class="space-y-3">
+            <div class="flex items-center justify-between mb-1 bg-white rounded-2xl shadow-sm px-2 py-2">
+              <button @click="anoVisaoAnualAnterior(); garantirAnoCompletoVisaoAnual()" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
+              <p class="font-semibold" x-text="anoVisaoAnual"></p>
+              <button @click="anoVisaoAnualSeguinte(); garantirAnoCompletoVisaoAnual()" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
+            </div>
+
+            <template x-for="m in resumoAnual.meses" :key="m.mes">
+              <section class="bg-white rounded-2xl shadow-sm p-4">
+                <button @click="toggleMesAnual(m.mes)" class="w-full flex items-center justify-between gap-2">
+                  <p class="font-semibold text-gray-800" x-text="m.nome"></p>
+                  <div class="flex items-center gap-2">
+                    <p class="font-semibold" x-text="fmtMoeda(m.total)"></p>
+                    <span class="text-gray-400" x-text="abaAnualAberta === m.mes ? '▲' : '▼'"></span>
+                  </div>
+                </button>
+                <div x-show="abaAnualAberta === m.mes" x-cloak class="mt-3 divide-y border-t pt-2">
+                  <template x-for="item in m.itens" :key="item.tipo + item.data + item.nome">
+                    <div class="flex items-center justify-between gap-2 py-2">
+                      <div class="min-w-0">
+                        <p class="font-medium truncate" x-text="item.nome"></p>
+                        <p class="text-xs text-gray-400" x-text="fmtData(item.data)"></p>
+                      </div>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <span x-show="item.tipo === 'conta_fixa'" class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(item.status)" x-text="item.status"></span>
+                        <p class="font-medium" x-text="fmtMoeda(item.valor)"></p>
+                      </div>
+                    </div>
+                  </template>
+                  <p x-show="m.itens.length === 0" class="text-xs text-gray-400 py-2">Nenhuma despesa nesse mês.</p>
+                </div>
+              </section>
+            </template>
+
+            <section class="bg-rose-50 rounded-2xl shadow-sm p-4 flex items-center justify-between">
+              <p class="font-semibold text-rose-700" x-text="'Total do ano ' + anoVisaoAnual"></p>
+              <p class="font-bold text-rose-700 text-lg" x-text="fmtMoeda(resumoAnual.totalAno)"></p>
+            </section>
+          </section>
+        </template>
+
         <!-- TRANSFERÊNCIAS INTERNAS (só admin) -->
         <template x-if="abaFinanceiro === 'transferencias'">
           <section class="bg-white rounded-2xl shadow-sm p-4">
@@ -393,25 +438,29 @@
           </section>
         </template>
 
-        <!-- MODAL: nova conta fixa -->
-        <div x-show="criandoContaFixa" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoContaFixa = false">
+        <!-- MODAL: nova/editar conta fixa -->
+        <div x-show="criandoContaFixa" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoContaFixa = false; editandoContaFixa = null">
           <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
             <div class="flex items-center justify-between mb-3">
-              <p class="font-semibold">Nova conta fixa</p>
-              <button @click="criandoContaFixa = false" class="text-gray-400">✕</button>
+              <p class="font-semibold" x-text="editandoContaFixa ? 'Editar conta fixa' : 'Nova conta fixa'"></p>
+              <button @click="criandoContaFixa = false; editandoContaFixa = null" class="text-gray-400">✕</button>
             </div>
             <form @submit.prevent="salvarContaFixa" class="space-y-2">
               <input type="text" placeholder="Nome (ex: Internet)" x-model="formContaFixa.name" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <input type="number" step="0.01" placeholder="Valor (R$)" x-model="formContaFixa.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500">Dia do vencimento (1-31)</label>
               <input type="number" min="1" max="31" x-model="formContaFixa.due_day" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <label class="flex items-center gap-2 text-xs text-gray-600 py-1">
+                <input type="checkbox" x-model="formContaFixa.vence_mes_seguinte" class="rounded border-gray-300" />
+                Vencimento cai no mês seguinte ao mês de referência (ex: conta de junho com boleto vencendo em julho)
+              </label>
               <select x-model="formContaFixa.category_id" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
                 <option value="">Sem categoria</option>
                 <template x-for="c in categories" :key="c.id">
                   <option :value="c.id" x-text="c.name"></option>
                 </template>
               </select>
-              <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Criar</button>
+              <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2" x-text="editandoContaFixa ? 'Salvar' : 'Criar'"></button>
             </form>
           </div>
         </div>
@@ -427,7 +476,11 @@
               <input type="text" placeholder="Descrição" x-model="formTransacao.description" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <input type="number" step="0.01" placeholder="Valor (R$)" x-model="formTransacao.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <input type="date" x-model="formTransacao.date" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-              <input type="text" placeholder="Conta/cartão (opcional)" x-model="formTransacao.account" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <select x-model="formTransacao.account" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base">
+                <option value="">Sem conta/cartão definida</option>
+                <option value="PIX">PIX</option>
+                <option value="Cartão">Cartão</option>
+              </select>
               <select x-model="formTransacao.kind" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
                 <option value="diaria">Dia a dia</option>
                 <option value="variavel">Variável/cartão</option>
