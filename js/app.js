@@ -13,6 +13,14 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+function bufferToBase64(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+
+function base64ToBuffer(base64) {
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
 export const CARTOES_FAMILIA = [
   "Itaú Ricardo",
   "Itaú Jéssica (Pão de Açúcar)",
@@ -48,6 +56,9 @@ Alpine.data("appState", () => ({
     isAdmin: false,
     uid: null,
     notificacaoStatus: "default", // default | granted | denied | unsupported
+    bloqueado: false, // true = sessão já restaurada, mas esperando Face ID/digital pra mostrar os dados
+    biometriaSuportada: typeof window !== "undefined" && !!window.PublicKeyCredential,
+    biometriaErro: "",
     fixedBills: [],
     billPayments: [],
     categories: [],
@@ -114,7 +125,16 @@ Alpine.data("appState", () => ({
       }
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        await this.loadAfterLogin();
+        if (this.temBiometriaAtiva(data.session.user.id)) {
+          // não carrega os dados ainda — só libera depois do Face ID/digital,
+          // pra ninguém abrir o app e já ver financeiro/ciclo sem desbloquear.
+          this.uid = data.session.user.id;
+          this.view = "app";
+          this.bloqueado = true;
+          this.loadingData = false;
+        } else {
+          await this.loadAfterLogin();
+        }
       } else {
         this.view = "login";
       }
@@ -129,6 +149,70 @@ Alpine.data("appState", () => ({
           this.profile = null;
         }
       });
+    },
+
+    // ===================== DESBLOQUEIO POR BIOMETRIA (Face ID / digital) =====================
+    // Não é autenticação nova — a sessão do Supabase já está válida (persistSession).
+    // É só uma trava local: usa o leitor biométrico do aparelho (via WebAuthn) pra
+    // confirmar "é você mesmo" antes de mostrar os dados, sem precisar digitar senha
+    // de novo. O credential fica só nesse dispositivo (não sincroniza entre celulares).
+
+    chaveBiometria(uid) {
+      return `casa-em-dia:biometria:${uid}`;
+    },
+
+    temBiometriaAtiva(uid) {
+      return this.biometriaSuportada && !!localStorage.getItem(this.chaveBiometria(uid));
+    },
+
+    async ativarBiometria() {
+      this.biometriaErro = "";
+      if (!this.biometriaSuportada) return alert("Esse navegador/dispositivo não suporta Face ID/digital (WebAuthn).");
+      try {
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rp: { name: "Casa em Dia" },
+            user: {
+              id: crypto.getRandomValues(new Uint8Array(16)),
+              name: this.profile?.display_name || "usuário",
+              displayName: this.profile?.display_name || "usuário",
+            },
+            pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+            authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+            timeout: 60000,
+          },
+        });
+        if (!credential) throw new Error("Não foi possível criar a credencial.");
+        localStorage.setItem(this.chaveBiometria(this.uid), bufferToBase64(credential.rawId));
+        alert("Desbloqueio por Face ID/digital ativado nesse aparelho!");
+      } catch (e) {
+        this.biometriaErro = "Não consegui ativar: " + e.message;
+      }
+    },
+
+    desativarBiometria() {
+      localStorage.removeItem(this.chaveBiometria(this.uid));
+    },
+
+    async desbloquear() {
+      this.biometriaErro = "";
+      try {
+        const credId = localStorage.getItem(this.chaveBiometria(this.uid));
+        const assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            allowCredentials: [{ id: base64ToBuffer(credId), type: "public-key" }],
+            userVerification: "required",
+            timeout: 60000,
+          },
+        });
+        if (!assertion) throw new Error("Desbloqueio cancelado.");
+        this.bloqueado = false;
+        await this.loadAfterLogin();
+      } catch (e) {
+        this.biometriaErro = "Não foi possível desbloquear: " + e.message;
+      }
     },
 
     trocarDeConta() {

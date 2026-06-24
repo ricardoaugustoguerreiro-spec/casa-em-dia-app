@@ -85,7 +85,19 @@
   </div>
 
   <!-- APP -->
-  <div x-show="view === 'app'" x-cloak class="max-w-5xl mx-auto p-3 sm:p-4 pb-16">
+  <!-- TELA DE BLOQUEIO: sessão já restaurada, esperando Face ID/digital -->
+  <div x-show="view === 'app' && bloqueado" x-cloak class="flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm p-6 text-center">
+      <div class="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold mx-auto mb-3" :style="'background-color: ' + (profile?.color || '#7c3aed')" x-text="(profile?.display_name || 'C').charAt(0).toUpperCase()"></div>
+      <h1 class="text-base font-semibold mb-1">Casa em Dia bloqueado</h1>
+      <p class="text-xs text-gray-500 mb-5">Confirme com Face ID, digital ou a tela de desbloqueio do aparelho pra continuar.</p>
+      <button @click="desbloquear" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-3 text-sm font-medium">🔓 Desbloquear</button>
+      <p x-show="biometriaErro" class="text-xs text-red-600 mt-3" x-text="biometriaErro"></p>
+      <button @click="logout" class="text-xs text-gray-400 underline mt-4">Sair da conta</button>
+    </div>
+  </div>
+
+  <div x-show="view === 'app' && !bloqueado" x-cloak class="max-w-5xl mx-auto p-3 sm:p-4 pb-16">
     <header class="flex flex-wrap items-center justify-between gap-2 py-4">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" :style="'background-color: ' + (profile?.color || '#7c3aed')" x-text="(profile?.display_name || 'C').charAt(0).toUpperCase()"></div>
@@ -263,7 +275,7 @@
                 <button @click="abrirNovaContaFixa" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
               </div>
             </div>
-            <p class="text-xs text-gray-500 mb-3" x-text="'Total do mês: ' + fmtMoeda(totalContasFixasDoMes)"></p>
+            <p class="text-sm font-semibold text-gray-800 mb-3" x-text="'Total do mês (contas fixas + cartões): ' + fmtMoeda(totalContasFixasDoMes + totalFaturasCartaoDoMes)"></p>
             <p x-show="resultadoImportacao" class="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 mb-3" x-text="resultadoImportacao ? (resultadoImportacao.contasMarcadas + ' conta(s) marcada(s) como paga(s), ' + resultadoImportacao.novosLancamentos + ' lançamento(s) novo(s) criado(s).') : ''"></p>
             <div class="divide-y">
               <template x-for="p in billPaymentsDoMes" :key="p.id">
@@ -894,6 +906,25 @@
           <p class="text-xs text-gray-400 mt-3">
             Pra receber notificações fora do app, instale o Casa em Dia na tela inicial do celular (no Android/Chrome: menu → "Instalar aplicativo"; no iPhone/Safari: compartilhar → "Adicionar à Tela de Início").
           </p>
+        </section>
+
+        <!-- DESBLOQUEIO POR BIOMETRIA -->
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-2">🔒 Desbloqueio por Face ID / digital</h2>
+          <p class="text-xs text-gray-500 mb-3">
+            Liga uma trava local nesse aparelho: ao abrir o app, pede Face ID (iPhone) ou impressão digital (Android) antes de mostrar os dados financeiros — sem precisar digitar a senha de novo. Só vale pra esse aparelho.
+          </p>
+          <p x-show="!biometriaSuportada" class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Esse navegador/dispositivo não suporta esse recurso.</p>
+          <template x-if="biometriaSuportada">
+            <div>
+              <button x-show="!temBiometriaAtiva(uid)" @click="ativarBiometria" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Ativar Face ID / digital</button>
+              <div x-show="temBiometriaAtiva(uid)" class="flex items-center gap-2">
+                <span class="text-xs font-medium text-green-700">✓ Ativado nesse aparelho</span>
+                <button @click="desativarBiometria" class="text-xs text-gray-400 underline">Desativar</button>
+              </div>
+              <p x-show="biometriaErro" class="text-xs text-red-600 mt-2" x-text="biometriaErro"></p>
+            </div>
+          </template>
         </section>
 
         <!-- SALDO INFORMADO -->
