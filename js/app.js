@@ -303,6 +303,45 @@ Alpine.data("appState", () => ({
       alert("Notificações ativadas! Você vai receber avisos de contas/prazos vencendo, eventos do calendário e conflitos de agenda.");
     },
 
+    // checagem local (sem depender do backend de push): roda a cada login/recarregamento
+    // e dispara notificações do navegador pra contas/faturas que vencem hoje ou amanhã,
+    // e pra dias com conflito de agenda na semana. Usa localStorage pra não repetir o aviso
+    // mais de uma vez por dia/item.
+    async verificarAlertasDeContas() {
+      if (Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;
+      const registration = await navigator.serviceWorker.ready;
+      const hoje = this.hojeISO();
+      const amanha = this.addDias(hoje, 1);
+      const jaAvisados = JSON.parse(localStorage.getItem("casa-em-dia:alertasEnviados") || "{}");
+      const chaveHoje = `contas:${hoje}`;
+      if (jaAvisados[chaveHoje]) return; // já avisou hoje, não repete
+
+      const vencendoHoje = this.contasDoDia(hoje);
+      const vencendoAmanha = this.contasDoDia(amanha);
+      const diaComConflito = this.agendaDaSemana.find((d) => d.data === hoje && (d.conflitoAgenda || d.conflitoFinanceiro));
+
+      const avisos = [];
+      if (vencendoHoje.length) {
+        const total = vencendoHoje.reduce((s, c) => s + c.valor, 0);
+        avisos.push({ title: "Conta vencendo hoje", body: `${vencendoHoje.length} conta(s) vencendo hoje, total ${this.fmtMoeda(total)}.` });
+      }
+      if (vencendoAmanha.length) {
+        const total = vencendoAmanha.reduce((s, c) => s + c.valor, 0);
+        avisos.push({ title: "Conta vencendo amanhã", body: `${vencendoAmanha.length} conta(s) vencendo amanhã, total ${this.fmtMoeda(total)}.` });
+      }
+      if (diaComConflito) {
+        avisos.push({ title: "Conflito de agenda hoje", body: "Você tem compromissos ou contas se sobrepondo hoje — revise o calendário." });
+      }
+
+      for (const aviso of avisos) {
+        await registration.showNotification(aviso.title, { body: aviso.body, icon: "icons/icon-192.png", badge: "icons/icon-192.png" });
+      }
+      if (avisos.length) {
+        jaAvisados[chaveHoje] = true;
+        localStorage.setItem("casa-em-dia:alertasEnviados", JSON.stringify(jaAvisados));
+      }
+    },
+
     async loadAfterLogin() {
       this.loadingData = true;
       const { data: userData } = await supabase.auth.getUser();
@@ -324,6 +363,7 @@ Alpine.data("appState", () => ({
       await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
       this.loadingData = false;
       this.$nextTick(() => this.animateCards());
+      this.verificarAlertasDeContas();
     },
 
     async loadDashboard() {
@@ -1355,6 +1395,24 @@ Alpine.data("appState", () => ({
       return this.events.filter((e) => e.starts_at && e.starts_at.slice(0, 10) === dataISO);
     },
 
+    // contas fixas + faturas de cartão que vencem nesse dia (pendentes), unificadas
+    // num formato só pra exibir junto com os eventos do calendário/agenda.
+    contasDoDia(dataISO) {
+      if (!dataISO) return [];
+      const contas = this.billPayments
+        .filter((p) => p.due_date === dataISO && p.status === "pendente")
+        .map((p) => ({ titulo: this.billName(p.fixed_bill_id), valor: Number(p.amount || 0), origem: "conta_fixa", id: p.id }));
+      const faturas = this.faturasCartao
+        .filter((f) => f.due_date === dataISO && f.status === "pendente" && Number(f.amount || 0) > 0)
+        .map((f) => ({ titulo: "Fatura " + this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), origem: "fatura_cartao", id: f.id }));
+      return [...contas, ...faturas];
+    },
+
+    // conflito financeiro = duas ou mais contas/faturas vencendo no mesmo dia
+    temConflitoFinanceiro(dataISO) {
+      return this.contasDoDia(dataISO).length >= 2;
+    },
+
     feriadoDoDia(dataISO) {
       return dataISO ? nomeFeriado(dataISO) : null;
     },
@@ -1609,7 +1667,31 @@ Alpine.data("appState", () => ({
       return [
         ...this.eventosDoDia(hoje).map((e) => ({ titulo: e.title, tipo: e.tipo === "trabalho" ? "Compromisso de trabalho" : "Compromisso", origem: "calendario" })),
         ...this.tarefasJoiasDoDia(hoje).map((t) => ({ titulo: t.titulo, tipo: "Prazo de joia", origem: "sistema_joias" })),
+        ...this.contasDoDia(hoje).map((c) => ({ titulo: c.titulo + " · " + this.fmtMoeda(c.valor), tipo: c.origem === "fatura_cartao" ? "Fatura vencendo" : "Conta vencendo", origem: "financeiro" })),
       ];
+    },
+
+    // agenda dos próximos 7 dias (hoje + 6), com eventos, contas a vencer e conflitos —
+    // usada no painel pra mostrar "o que tem essa semana" de uma vez só.
+    get agendaDaSemana() {
+      const dias = [];
+      for (let i = 0; i < 7; i++) {
+        const dataISO = this.addDias(this.hojeISO(), i);
+        const eventos = this.eventosDoDia(dataISO);
+        const contas = this.contasDoDia(dataISO);
+        dias.push({
+          data: dataISO,
+          eventos,
+          contas,
+          conflitoAgenda: this.temConflito(dataISO),
+          conflitoFinanceiro: this.temConflitoFinanceiro(dataISO),
+        });
+      }
+      return dias;
+    },
+
+    get conflitosNaSemana() {
+      return this.agendaDaSemana.filter((d) => d.conflitoAgenda || d.conflitoFinanceiro).length;
     },
 
     get trabalhosEmAberto() {

@@ -147,15 +147,32 @@
           </div>
         </section>
 
-        <section class="rounded-2xl shadow-sm p-4" :class="conflitoHoje ? 'bg-red-50' : 'bg-white'">
-          <h2 class="text-sm font-semibold mb-1" :class="conflitoHoje ? 'text-red-700' : 'text-gray-700'">⚠️ Conflito de agenda hoje</h2>
-          <p class="text-sm" :class="conflitoHoje ? 'text-red-700 font-medium' : 'text-gray-400'" x-text="conflitoHoje ? 'Você tem compromissos com horário sobreposto hoje — revise no calendário.' : 'Nenhum conflito hoje.'"></p>
+        <section class="rounded-2xl shadow-sm p-4" :class="(conflitoHoje || temConflitoFinanceiro(hojeISO())) ? 'bg-red-50' : 'bg-white'">
+          <h2 class="text-sm font-semibold mb-1" :class="(conflitoHoje || temConflitoFinanceiro(hojeISO())) ? 'text-red-700' : 'text-gray-700'">⚠️ Conflito de agenda hoje</h2>
+          <p class="text-sm" :class="(conflitoHoje || temConflitoFinanceiro(hojeISO())) ? 'text-red-700 font-medium' : 'text-gray-400'" x-text="conflitoHoje && temConflitoFinanceiro(hojeISO()) ? 'Compromissos sobrepostos e mais de uma conta vencendo hoje — revise no calendário.' : conflitoHoje ? 'Você tem compromissos com horário sobreposto hoje — revise no calendário.' : temConflitoFinanceiro(hojeISO()) ? 'Mais de uma conta/fatura vence hoje — revise no calendário.' : 'Nenhum conflito hoje.'"></p>
         </section>
 
         <section class="bg-amber-50 rounded-2xl shadow-sm p-4">
           <h2 class="text-sm font-semibold text-amber-700 mb-1">⏳ Pendente nesse mês (financeiro)</h2>
           <p class="text-lg font-semibold text-amber-800" x-text="fmtMoeda(pendenteEmContas.total)"></p>
           <p class="text-xs text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)'"></p>
+        </section>
+
+        <section class="bg-white rounded-2xl shadow-sm p-4" style="grid-column: 1 / -1;">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-gray-700">📅 Agenda da semana</h2>
+            <span x-show="conflitosNaSemana > 0" class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 uppercase" x-text="conflitosNaSemana + ' dia(s) com conflito'"></span>
+          </div>
+          <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));">
+            <template x-for="d in agendaDaSemana" :key="d.data">
+              <button @click="selecionarDia(d.data)" class="text-left rounded-xl p-2.5 border" :class="(d.conflitoAgenda || d.conflitoFinanceiro) ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'">
+                <p class="text-xs font-semibold" :class="(d.conflitoAgenda || d.conflitoFinanceiro) ? 'text-red-700' : 'text-gray-700'" x-text="ehHoje(d.data) ? 'Hoje' : fmtData(d.data)"></p>
+                <p class="text-[11px] text-gray-500 mt-1" x-text="d.eventos.length + ' compromisso(s)'"></p>
+                <p class="text-[11px]" :class="d.contas.length ? 'text-red-600' : 'text-gray-400'" x-text="d.contas.length ? d.contas.length + ' conta(s) vencendo' : 'sem contas vencendo'"></p>
+                <p class="text-[10px] text-red-600 font-medium mt-1" x-show="d.conflitoAgenda || d.conflitoFinanceiro">⚠️ conflito</p>
+              </button>
+            </template>
+          </div>
         </section>
       </div>
     </template>
@@ -862,6 +879,7 @@
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>Trabalho</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block"></span>Feriado</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>Prazo do Sistema de Joias</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"></span>Conta/fatura vencendo</span>
           <span class="flex items-center gap-1">🌕 Lua cheia/nova</span>
           <template x-if="!isAdmin">
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-pink-500 inline-block"></span>Menstruação</span>
@@ -885,7 +903,7 @@
                     :disabled="!dia"
                     class="aspect-square text-[10px] rounded-md flex flex-col items-center justify-center relative"
                     :class="[
-                      !dia ? 'invisible' : (diaSelecionado === dia ? 'bg-rose-500 text-white' : temConflito(dia) ? 'bg-red-100' : (!isAdmin && faseCicloDoDia(dia) === 'menstrual') ? 'bg-pink-100' : (!isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')) ? 'bg-teal-50' : feriadoDoDia(dia) ? 'bg-gray-100' : 'hover:bg-gray-50'),
+                      !dia ? 'invisible' : (diaSelecionado === dia ? 'bg-rose-500 text-white' : (temConflito(dia) || temConflitoFinanceiro(dia)) ? 'bg-red-100' : (!isAdmin && faseCicloDoDia(dia) === 'menstrual') ? 'bg-pink-100' : (!isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')) ? 'bg-teal-50' : feriadoDoDia(dia) ? 'bg-gray-100' : 'hover:bg-gray-50'),
                       dia && ehHoje(dia) && diaSelecionado !== dia ? 'ring-2 ring-rose-400' : '',
                     ]"
                   >
@@ -899,6 +917,7 @@
                       <template x-if="dia && eventosDoDia(dia).some(e => e.tipo === 'trabalho')"><span class="w-1 h-1 rounded-full bg-orange-500"></span></template>
                       <template x-if="dia && feriadoDoDia(dia)"><span class="w-1 h-1 rounded-full bg-gray-400"></span></template>
                       <template x-if="dia && tarefasJoiasDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-amber-500"></span></template>
+                      <template x-if="dia && contasDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-red-600"></span></template>
                       <template x-if="dia && !isAdmin && faseCicloDoDia(dia) === 'menstrual'"><span class="w-1 h-1 rounded-full bg-pink-500"></span></template>
                       <template x-if="dia && !isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')"><span class="w-1 h-1 rounded-full bg-teal-400"></span></template>
                     </span>
@@ -962,6 +981,14 @@
                 </div>
               </template>
               <p x-show="diaSelecionado && eventosDoDia(diaSelecionado).length === 0" class="text-xs text-gray-400">Nenhum compromisso neste dia.</p>
+
+              <template x-for="c in (diaSelecionado ? contasDoDia(diaSelecionado) : [])" :key="c.id">
+                <div class="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3 py-2">
+                  <p class="text-sm font-medium truncate text-red-700" x-text="c.titulo"></p>
+                  <p class="text-sm font-medium shrink-0 text-red-700" x-text="fmtMoeda(c.valor)"></p>
+                </div>
+              </template>
+              <p x-show="diaSelecionado && temConflitoFinanceiro(diaSelecionado)" class="text-xs text-red-600 font-medium">⚠️ Mais de uma conta/fatura vencendo nesse dia.</p>
             </div>
 
             <form @submit.prevent="salvarEvento" class="border-t border-gray-100 pt-3 space-y-2">
