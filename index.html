@@ -367,8 +367,9 @@
           <section class="bg-white rounded-2xl shadow-sm p-4">
             <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
               <h2 class="text-sm font-semibold text-gray-700">🛒 Dia a dia</h2>
-              <div class="flex items-center gap-2">
-                <button @click="abrirNovoDiaADia('previsto')" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">🔮 Prever gasto futuro</button>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button @click="abrirNovaPrevisaoGrupo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">📅 Previsão em grupo</button>
+                <button @click="abrirNovoDiaADia('previsto')" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">🔮 Prever 1 dia</button>
                 <button @click="abrirNovoDiaADia('realizado')" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Gasto real</button>
               </div>
             </div>
@@ -377,22 +378,35 @@
               <span x-show="totalDiaADiaPrevistoDoMes > 0" x-text="' · Previsto: ' + fmtMoeda(totalDiaADiaPrevistoDoMes)"></span>
             </p>
             <div class="divide-y">
-              <template x-for="d in diaADiaDoMes" :key="d.id">
-                <div class="flex items-center justify-between gap-2 py-2.5 flex-wrap">
-                  <div class="min-w-0">
-                    <p class="font-medium flex items-center gap-2 flex-wrap">
-                      <span x-text="d.descricao"></span>
-                      <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
-                    </p>
-                    <p class="text-xs text-gray-400" x-text="fmtData(d.data) + (d.observacao ? ' · ' + d.observacao : '')"></p>
-                  </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <p class="font-medium" x-text="fmtMoeda(d.valor)"></p>
-                    <button x-show="d.status === 'previsto'" @click="realizarPrevisao(d)" class="text-xs px-2 py-1 rounded-full border border-green-200 text-green-700 hover:bg-green-50">✓ Realizar</button>
-                    <button @click="abrirEditarDiaADia(d)" aria-label="Editar" class="text-gray-300 hover:text-gray-600 p-1">✎</button>
-                    <button @click="excluirDiaADia(d.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
-                    </button>
+              <template x-for="grupo in diaADiaAgrupadoDoMes" :key="grupo.grupo || grupo.itens[0].id">
+                <div class="py-2.5">
+                  <p class="font-medium flex items-center gap-2 flex-wrap" x-show="grupo.grupo">
+                    <span x-text="grupo.nome + ' (' + grupo.itens.length + ' dia' + (grupo.itens.length > 1 ? 's' : '') + ')'"></span>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-600" x-text="fmtMoeda(grupo.itens.reduce((s,i) => s + Number(i.valor), 0))"></span>
+                  </p>
+                  <div :class="grupo.grupo ? 'pl-3 border-l border-gray-100 mt-1 space-y-1' : ''">
+                    <template x-for="d in grupo.itens" :key="d.id">
+                      <div class="flex items-center justify-between gap-2 flex-wrap">
+                        <div class="min-w-0">
+                          <p class="font-medium flex items-center gap-2 flex-wrap" x-show="!grupo.grupo">
+                            <span x-text="d.descricao"></span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
+                          </p>
+                          <p class="text-xs text-gray-400 flex items-center gap-2" :class="grupo.grupo ? '' : ''">
+                            <span x-text="fmtData(d.data) + (d.observacao ? ' · ' + d.observacao : '')"></span>
+                            <span x-show="grupo.grupo" class="text-[10px] px-1.5 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
+                          </p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                          <p class="font-medium" x-text="fmtMoeda(d.valor)"></p>
+                          <button x-show="d.status === 'previsto'" @click="realizarPrevisao(d)" class="text-xs px-2 py-1 rounded-full border border-green-200 text-green-700 hover:bg-green-50">✓ Realizar</button>
+                          <button @click="abrirEditarDiaADia(d)" aria-label="Editar" class="text-gray-300 hover:text-gray-600 p-1">✎</button>
+                          <button @click="excluirDiaADia(d.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </template>
@@ -400,6 +414,34 @@
             </div>
           </section>
         </template>
+
+        <!-- MODAL: previsão em grupo (várias datas, um nome só) -->
+        <div x-show="criandoPrevisaoGrupo" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoPrevisaoGrupo = false">
+          <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-3">
+              <p class="font-semibold">📅 Previsão em grupo</p>
+              <button @click="criandoPrevisaoGrupo = false" class="text-gray-400">✕</button>
+            </div>
+            <form @submit.prevent="salvarPrevisaoGrupo" class="space-y-3">
+              <div>
+                <label class="block text-xs text-gray-500">Nome do grupo</label>
+                <input type="text" x-model="formPrevisaoGrupo.nome" required placeholder="ex: Final de semana" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              </div>
+              <div class="space-y-2">
+                <label class="block text-xs text-gray-500">Dias e valor previsto de cada um</label>
+                <template x-for="(dia, i) in formPrevisaoGrupo.dias" :key="i">
+                  <div class="flex items-center gap-2">
+                    <input type="date" x-model="dia.data" required class="flex-1 rounded-lg border border-gray-200 px-2 py-2 text-sm" />
+                    <input type="number" step="0.01" x-model="dia.valor" required placeholder="R$" class="w-24 rounded-lg border border-gray-200 px-2 py-2 text-sm" />
+                    <button type="button" @click="removerDiaPrevisaoGrupo(i)" x-show="formPrevisaoGrupo.dias.length > 1" class="text-gray-300 hover:text-red-500 p-1">✕</button>
+                  </div>
+                </template>
+              </div>
+              <button type="button" @click="adicionarDiaPrevisaoGrupo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">+ Adicionar dia</button>
+              <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar grupo</button>
+            </form>
+          </div>
+        </div>
 
         <!-- MODAL: novo/editar Dia a Dia -->
         <div x-show="criandoDiaADia || editandoDiaADia" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoDiaADia = false; editandoDiaADia = null">

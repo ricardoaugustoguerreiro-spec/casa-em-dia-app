@@ -8,3 +8,4 @@ migration_parceladas.sql | aplicada (pré-existente, antes deste arquivo de cont
 migration_competencia.sql | aplicada em 2026-06-22T00:00:00 (via pg8000, confirmada com query de colunas)
 migration_tarefas_joias.sql | aplicada em 2026-06-22T10:42:41
 migration_cartoes_dia_a_dia.sql | aplicada em 2026-06-23 (via psycopg2, confirmada com select em cartoes/faturas_cartao/dia_a_dia)
+migration_dia_a_dia_grupo.sql | aplicada em 2026-06-24 (via psycopg2, alter table dia_a_dia add column grupo)

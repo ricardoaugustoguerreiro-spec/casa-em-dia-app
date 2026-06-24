@@ -100,6 +100,8 @@ Alpine.data("appState", () => ({
     criandoDiaADia: false,
     formDiaADia: { data: "", descricao: "", valor: "", observacao: "", status: "realizado" },
     editandoDiaADia: null,
+    criandoPrevisaoGrupo: false,
+    formPrevisaoGrupo: { nome: "", dias: [{ data: "", valor: "" }] },
 
     // calendário
     events: [],
@@ -641,13 +643,23 @@ Alpine.data("appState", () => ({
       return gastoTransacoes + gastoContas;
     },
 
+    // soma contas fixas + faturas de cartão pendentes — visão única do que falta pagar no mês
     get pendenteEmContas() {
-      const pendentes = this.billPaymentsDoMes.filter((p) => p.status === "pendente");
-      return { total: pendentes.reduce((s, p) => s + Number(p.amount || 0), 0), quantidade: pendentes.length };
+      const contasPendentes = this.billPaymentsDoMes.filter((p) => p.status === "pendente");
+      const cartoesPendentes = this.faturasCartaoDoMes.filter((f) => f.status === "pendente" && Number(f.amount || 0) > 0);
+      return {
+        total: contasPendentes.reduce((s, p) => s + Number(p.amount || 0), 0) + cartoesPendentes.reduce((s, f) => s + Number(f.amount || 0), 0),
+        quantidade: contasPendentes.length + cartoesPendentes.length,
+      };
     },
 
     get totalContasFixasDoMes() {
       return this.billPaymentsDoMes.reduce((s, p) => s + Number(p.amount || 0), 0);
+    },
+
+    // contas fixas + cartões juntos, o número "cheio" do mês (igual ao que já aparece em Contas Fixas)
+    get totalContasFixasComCartoesDoMes() {
+      return this.totalContasFixasDoMes + this.totalFaturasCartaoDoMes;
     },
 
     // bruta = tudo que entrou (inclui transferência interna entre Ricardo e Jéssica);
@@ -872,6 +884,61 @@ Alpine.data("appState", () => ({
       const { error } = await supabase.from("dia_a_dia").delete().eq("id", id);
       if (error) return alert("Erro ao excluir: " + error.message);
       this.diaADia = this.diaADia.filter((d) => d.id !== id);
+    },
+
+    // ===================== PREVISÃO EM GRUPO: várias datas, um nome só =====================
+    // ex: "Final de semana" nos dias 25 e 26 — cada dia é uma linha previsto própria
+    // (pra poder "Realizar" um por um conforme o dia chega), todas marcadas com o
+    // mesmo grupo só pra aparecerem juntas na lista.
+
+    abrirNovaPrevisaoGrupo() {
+      this.criandoPrevisaoGrupo = true;
+      this.formPrevisaoGrupo = { nome: "", dias: [{ data: "", valor: "" }] };
+    },
+
+    adicionarDiaPrevisaoGrupo() {
+      this.formPrevisaoGrupo.dias.push({ data: "", valor: "" });
+    },
+
+    removerDiaPrevisaoGrupo(i) {
+      this.formPrevisaoGrupo.dias.splice(i, 1);
+    },
+
+    async salvarPrevisaoGrupo() {
+      const nome = this.formPrevisaoGrupo.nome.trim();
+      const dias = this.formPrevisaoGrupo.dias.filter((d) => d.data && d.valor);
+      if (!nome || !dias.length) return alert("Preencha o nome do grupo e pelo menos um dia com valor.");
+      const grupo = `${nome}-${Date.now()}`;
+      const linhas = dias.map((d) => ({
+        data: d.data,
+        descricao: nome,
+        valor: Number(d.valor),
+        status: "previsto",
+        grupo,
+        owner_id: this.uid,
+      }));
+      const { data, error } = await supabase.from("dia_a_dia").insert(linhas).select();
+      if (error) return alert("Erro ao salvar: " + error.message);
+      this.diaADia.unshift(...data);
+      this.criandoPrevisaoGrupo = false;
+    },
+
+    // agrupa diaADiaDoMes: itens com "grupo" ficam juntos sob o nome do grupo;
+    // itens sem grupo (lançamento normal, real ou previsão única) ficam cada um sozinho.
+    get diaADiaAgrupadoDoMes() {
+      const vistos = new Set();
+      const resultado = [];
+      for (const item of this.diaADiaDoMes) {
+        if (item.grupo) {
+          if (vistos.has(item.grupo)) continue;
+          vistos.add(item.grupo);
+          const itensDoGrupo = this.diaADia.filter((d) => d.grupo === item.grupo).sort((a, b) => a.data.localeCompare(b.data));
+          resultado.push({ grupo: item.grupo, nome: item.descricao, itens: itensDoGrupo });
+        } else {
+          resultado.push({ grupo: null, nome: item.descricao, itens: [item] });
+        }
+      }
+      return resultado;
     },
 
     // mês de competência (a que a despesa se refere) é separado do mês do due_date real:
