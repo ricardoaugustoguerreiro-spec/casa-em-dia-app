@@ -77,7 +77,7 @@ Alpine.data("appState", () => ({
     formContaFixa: { name: "", amount: "", due_day: "10", category_id: "", vence_mes_seguinte: false },
     editandoContaFixa: null,
     criandoTransacao: false,
-    formTransacao: { description: "", amount: "", date: "", account: "", kind: "diaria", category_id: "" },
+    formTransacao: { description: "", amount: "", date: "", account: "", kind: "diaria", category_id: "", pessoa: "jessica" },
     editandoTransacao: null,
     abaAnualAberta: null, // "AAAA-MM" do mês expandido na Visão Anual
     anoVisaoAnual: new Date().getFullYear(),
@@ -685,6 +685,24 @@ Alpine.data("appState", () => ({
         .sort((a, b) => b.date.localeCompare(a.date));
     },
 
+    // Renda do Ricardo é sempre automática (sync do Sistema de Joias, nunca lançada
+    // na mão); renda da Jéssica é sempre manual, lançada na aba Renda.
+    get rendaRicardoDoMes() {
+      return this.transacoesRendaDoMes.filter((t) => t.pessoa === "ricardo");
+    },
+
+    get rendaJessicaDoMes() {
+      return this.transacoesRendaDoMes.filter((t) => t.pessoa === "jessica");
+    },
+
+    get totalRendaRicardoDoMes() {
+      return this.rendaRicardoDoMes.reduce((s, t) => s + Number(t.amount), 0);
+    },
+
+    get totalRendaJessicaDoMes() {
+      return this.rendaJessicaDoMes.reduce((s, t) => s + Number(t.amount), 0);
+    },
+
     // saldo do mês: renda líquida (já recebida) menos gasto do mês — pra saber se sobrou
     // ou se ficou negativo. Usa renda líquida (não bruta) porque transferência interna
     // entre Ricardo e Jéssica não é dinheiro novo de fora do casal.
@@ -1160,6 +1178,7 @@ Alpine.data("appState", () => ({
         account: "",
         kind: kindPadrao,
         category_id: "",
+        pessoa: "jessica",
       };
       this.editandoTransacao = null;
       this.criandoTransacao = true;
@@ -1173,6 +1192,7 @@ Alpine.data("appState", () => ({
         account: t.account || "",
         kind: t.kind,
         category_id: t.category_id || "",
+        pessoa: t.pessoa || "jessica",
       };
       this.editandoTransacao = t;
       this.criandoTransacao = true;
@@ -1188,6 +1208,7 @@ Alpine.data("appState", () => ({
         account: f.account || null,
         kind: f.kind,
         category_id: f.category_id || null,
+        pessoa: f.kind === "renda" ? f.pessoa : null,
       };
       if (this.editandoTransacao) {
         // marca edited=true: a sincronização com o Sistema de Joias nunca sobrescreve

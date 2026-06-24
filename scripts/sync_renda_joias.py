@@ -66,8 +66,8 @@ def sincronizar():
             if not existente:
                 conn.run(
                     """
-                    insert into transactions (date, description, amount, kind, source, raw)
-                    values (:data, :descricao, :valor, 'renda', 'sistema_joias', :raw)
+                    insert into transactions (date, description, amount, kind, source, pessoa, raw)
+                    values (:data, :descricao, :valor, 'renda', 'sistema_joias', 'ricardo', :raw)
                     """,
                     data=c["dataRecebimento"], descricao=descricao, valor=c["total"],
                     raw=json.dumps({"cobranca_id": c["id"], "cliente": c.get("cliente")}),
