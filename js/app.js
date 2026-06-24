@@ -1047,11 +1047,24 @@ Alpine.data("appState", () => ({
       return this.itensTimelineDoMes(mes).reduce((s, i) => s + i.valor, 0);
     },
 
+    // renda de qualquer mês (não só o mesFinanceiro selecionado) — pra calcular o
+    // saldo acumulado ano a ano sem precisar navegar mês a mês.
+    rendaDoMesEspecifico(mes) {
+      return this.transactions
+        .filter((t) => t.date.slice(0, 7) === mes && t.kind === "renda" && !t.transferencia_interna)
+        .reduce((s, t) => s + Number(t.amount), 0);
+    },
+
     get resumoAnual() {
       const ano = this.anoVisaoAnual;
+      let acumulado = 0;
       const meses = this.nomesMeses.map((nome, i) => {
         const mes = `${ano}-${String(i + 1).padStart(2, "0")}`;
-        return { mes, nome, itens: this.itensTimelineDoMes(mes), total: this.totalTimelineDoMes(mes) };
+        const renda = this.rendaDoMesEspecifico(mes);
+        const gasto = this.totalTimelineDoMes(mes);
+        const saldoDoMes = renda - gasto;
+        acumulado += saldoDoMes;
+        return { mes, nome, itens: this.itensTimelineDoMes(mes), total: gasto, renda, saldoDoMes, saldoAcumulado: acumulado };
       });
       const totalAno = meses.reduce((s, m) => s + m.total, 0);
       return { meses, totalAno };
