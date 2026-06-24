@@ -392,7 +392,7 @@
                             <span x-text="d.descricao"></span>
                             <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
                           </p>
-                          <p class="text-xs text-gray-400 flex items-center gap-2" :class="grupo.grupo ? '' : ''">
+                          <p class="text-xs text-gray-400 flex items-center gap-2">
                             <span x-text="fmtData(d.data) + (d.observacao ? ' · ' + d.observacao : '')"></span>
                             <span x-show="grupo.grupo" class="text-[10px] px-1.5 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
                           </p>
