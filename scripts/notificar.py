@@ -135,6 +135,47 @@ def main():
             marcar_enviado(url, key, chave)
             enviadas += 1
 
+    # ---------- 1b. Faturas de cartão vencendo ----------
+    faturas = rest(
+        url, key, "faturas_cartao",
+        {"select": "id,due_date,amount,cartao_id,status", "status": "eq.pendente", "due_date": f"lte.{limite}"},
+    )
+    cartoes = {c["id"]: c for c in rest(url, key, "cartoes", {"select": "id,nome"})}
+    for f in faturas:
+        if not f.get("amount"):
+            continue
+        chave = f"fatura:{f['id']}"
+        if ja_enviado(url, key, chave):
+            continue
+        nome = cartoes.get(f["cartao_id"], {}).get("nome", "Cartão")
+        payload = {"title": "Fatura vencendo", "body": f"Fatura {nome} vence em {f['due_date']}.", "url": "./index.html"}
+        if not subs_todos:
+            continue
+        if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_todos):
+            marcar_enviado(url, key, chave)
+            enviadas += 1
+
+    # ---------- 1c. Conflito financeiro: 2+ contas/faturas vencendo no mesmo dia ----------
+    vencimentos_por_dia = {}
+    for p in pagamentos:
+        vencimentos_por_dia.setdefault(p["due_date"], []).append(bills.get(p["fixed_bill_id"], {}).get("name", "Conta"))
+    for f in faturas:
+        if not f.get("amount"):
+            continue
+        vencimentos_por_dia.setdefault(f["due_date"], []).append("Fatura " + cartoes.get(f["cartao_id"], {}).get("nome", "Cartão"))
+    for dia, nomes in vencimentos_por_dia.items():
+        if len(nomes) < 2:
+            continue
+        chave = f"conflito_financeiro:{dia}"
+        if ja_enviado(url, key, chave):
+            continue
+        payload = {"title": "Conflito de contas", "body": f"{len(nomes)} contas/faturas vencem em {dia}: {', '.join(nomes)}.", "url": "./index.html"}
+        if not subs_todos:
+            continue
+        if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_todos):
+            marcar_enviado(url, key, chave)
+            enviadas += 1
+
     # ---------- 2. Eventos do calendário ----------
     eventos = rest(
         url, key, "events",

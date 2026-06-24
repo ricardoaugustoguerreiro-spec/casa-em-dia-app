@@ -303,45 +303,6 @@ Alpine.data("appState", () => ({
       alert("Notificações ativadas! Você vai receber avisos de contas/prazos vencendo, eventos do calendário e conflitos de agenda.");
     },
 
-    // checagem local (sem depender do backend de push): roda a cada login/recarregamento
-    // e dispara notificações do navegador pra contas/faturas que vencem hoje ou amanhã,
-    // e pra dias com conflito de agenda na semana. Usa localStorage pra não repetir o aviso
-    // mais de uma vez por dia/item.
-    async verificarAlertasDeContas() {
-      if (Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;
-      const registration = await navigator.serviceWorker.ready;
-      const hoje = this.hojeISO();
-      const amanha = this.addDias(hoje, 1);
-      const jaAvisados = JSON.parse(localStorage.getItem("casa-em-dia:alertasEnviados") || "{}");
-      const chaveHoje = `contas:${hoje}`;
-      if (jaAvisados[chaveHoje]) return; // já avisou hoje, não repete
-
-      const vencendoHoje = this.contasDoDia(hoje);
-      const vencendoAmanha = this.contasDoDia(amanha);
-      const diaComConflito = this.agendaDaSemana.find((d) => d.data === hoje && (d.conflitoAgenda || d.conflitoFinanceiro));
-
-      const avisos = [];
-      if (vencendoHoje.length) {
-        const total = vencendoHoje.reduce((s, c) => s + c.valor, 0);
-        avisos.push({ title: "Conta vencendo hoje", body: `${vencendoHoje.length} conta(s) vencendo hoje, total ${this.fmtMoeda(total)}.` });
-      }
-      if (vencendoAmanha.length) {
-        const total = vencendoAmanha.reduce((s, c) => s + c.valor, 0);
-        avisos.push({ title: "Conta vencendo amanhã", body: `${vencendoAmanha.length} conta(s) vencendo amanhã, total ${this.fmtMoeda(total)}.` });
-      }
-      if (diaComConflito) {
-        avisos.push({ title: "Conflito de agenda hoje", body: "Você tem compromissos ou contas se sobrepondo hoje — revise o calendário." });
-      }
-
-      for (const aviso of avisos) {
-        await registration.showNotification(aviso.title, { body: aviso.body, icon: "icons/icon-192.png", badge: "icons/icon-192.png" });
-      }
-      if (avisos.length) {
-        jaAvisados[chaveHoje] = true;
-        localStorage.setItem("casa-em-dia:alertasEnviados", JSON.stringify(jaAvisados));
-      }
-    },
-
     async loadAfterLogin() {
       this.loadingData = true;
       const { data: userData } = await supabase.auth.getUser();
@@ -363,7 +324,6 @@ Alpine.data("appState", () => ({
       await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
       this.loadingData = false;
       this.$nextTick(() => this.animateCards());
-      this.verificarAlertasDeContas();
     },
 
     async loadDashboard() {
