@@ -315,8 +315,10 @@
                     <p class="font-medium flex items-center gap-2 flex-wrap">
                       <span x-text="cartaoNome(f.cartao_id)"></span>
                       <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(f.status)" x-text="f.status"></span>
+                      <span x-show="alertaLimiteCartao(f) === 'estourou'" class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-red-100 text-red-700">🚨 estourou o limite</span>
+                      <span x-show="alertaLimiteCartao(f) === 'perto'" class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700">⚠️ perto do limite</span>
                     </p>
-                    <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(f.due_date) + ' · ' + fmtMoeda(f.amount)"></p>
+                    <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(f.due_date) + ' · ' + fmtMoeda(f.amount) + (percentualLimiteCartao(f) !== null ? ' · ' + Math.round(percentualLimiteCartao(f)*100) + '% do limite' : '')"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="abrirEditarFatura(f)" aria-label="Editar valor da fatura" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">✎ Editar</button>

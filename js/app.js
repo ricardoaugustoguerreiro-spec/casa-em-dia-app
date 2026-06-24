@@ -847,6 +847,21 @@ Alpine.data("appState", () => ({
       return this.cartoes.find((c) => c.id === cartaoId)?.nome || "Cartão";
     },
 
+    // % do limite usado pela fatura desse cartão nesse mês — null se não sabemos o limite.
+    percentualLimiteCartao(fatura) {
+      const cartao = this.cartoes.find((c) => c.id === fatura.cartao_id);
+      if (!cartao?.limite_credito) return null;
+      return Number(fatura.amount || 0) / Number(cartao.limite_credito);
+    },
+
+    alertaLimiteCartao(fatura) {
+      const pct = this.percentualLimiteCartao(fatura);
+      if (pct === null) return null;
+      if (pct >= 1) return "estourou";
+      if (pct >= 0.9) return "perto";
+      return null;
+    },
+
     abrirEditarFatura(f) {
       this.editandoFatura = f;
       this.formFatura = { amount: f.amount, status: f.status };

@@ -11,3 +11,4 @@ migration_cartoes_dia_a_dia.sql | aplicada em 2026-06-23 (via psycopg2, confirma
 migration_dia_a_dia_grupo.sql | aplicada em 2026-06-24 (via psycopg2, alter table dia_a_dia add column grupo)
 migration_renda_joias.sql | aplicada em 2026-06-24 (via psycopg2, indice unico em transactions raw->>cobranca_id)
 migration_renda_pessoa.sql | aplicada em 2026-06-24 (via psycopg2, coluna pessoa em transactions + backfill renda existente como ricardo)
+migration_limite_cartao.sql | aplicada em 2026-06-24 (via psycopg2, coluna limite_credito em cartoes)
