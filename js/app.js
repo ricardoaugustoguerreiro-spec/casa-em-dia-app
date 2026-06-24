@@ -78,6 +78,7 @@ Alpine.data("appState", () => ({
     editandoContaFixa: null,
     criandoTransacao: false,
     formTransacao: { description: "", amount: "", date: "", account: "", kind: "diaria", category_id: "" },
+    editandoTransacao: null,
     abaAnualAberta: null, // "AAAA-MM" do mês expandido na Visão Anual
     anoVisaoAnual: new Date().getFullYear(),
     filtroCategoriaTransacao: "",
@@ -1160,23 +1161,44 @@ Alpine.data("appState", () => ({
         kind: kindPadrao,
         category_id: "",
       };
+      this.editandoTransacao = null;
+      this.criandoTransacao = true;
+    },
+
+    abrirEditarTransacao(t) {
+      this.formTransacao = {
+        description: t.description,
+        amount: t.amount,
+        date: t.date,
+        account: t.account || "",
+        kind: t.kind,
+        category_id: t.category_id || "",
+      };
+      this.editandoTransacao = t;
       this.criandoTransacao = true;
     },
 
     async salvarTransacao() {
       const f = this.formTransacao;
       if (!f.description || !f.amount || !f.date) return alert("Preencha descrição, valor e data.");
-      const { error } = await supabase.from("transactions").insert({
+      const payload = {
         description: f.description,
         amount: Number(f.amount),
         date: f.date,
         account: f.account || null,
         kind: f.kind,
         category_id: f.category_id || null,
-        source: "manual",
-        created_by: this.uid,
-      });
-      if (error) return alert("Erro ao salvar lançamento: " + error.message);
+      };
+      if (this.editandoTransacao) {
+        // marca edited=true: a sincronização com o Sistema de Joias nunca sobrescreve
+        // um lançamento que você editou manualmente aqui.
+        const { error } = await supabase.from("transactions").update({ ...payload, edited: true }).eq("id", this.editandoTransacao.id);
+        if (error) return alert("Erro ao salvar lançamento: " + error.message);
+        this.editandoTransacao = null;
+      } else {
+        const { error } = await supabase.from("transactions").insert({ ...payload, source: "manual", created_by: this.uid });
+        if (error) return alert("Erro ao salvar lançamento: " + error.message);
+      }
       this.criandoTransacao = false;
       await this.loadDashboard();
       this.$nextTick(() => this.animateCards());

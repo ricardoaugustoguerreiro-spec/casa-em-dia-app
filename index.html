@@ -452,11 +452,15 @@
                 <template x-for="t in transacoesRendaDoMes" :key="t.id">
                   <div class="flex items-center justify-between gap-2 py-2.5">
                     <div class="min-w-0">
-                      <p class="font-medium truncate" x-text="t.description"></p>
+                      <p class="font-medium flex items-center gap-2 flex-wrap">
+                        <span x-text="t.description"></span>
+                        <span x-show="t.source === 'sistema_joias'" class="text-[10px] px-1.5 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700">joias</span>
+                      </p>
                       <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.transferencia_interna ? ' · transferência entre vocês' : '')"></p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                       <p class="font-medium text-green-700" x-text="fmtMoeda(t.amount)"></p>
+                      <button @click="abrirEditarTransacao(t)" aria-label="Editar" class="text-gray-300 hover:text-gray-600 p-1">✎</button>
                       <button @click="excluirTransacao(t.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
                       </button>
@@ -731,12 +735,12 @@
           </div>
         </div>
 
-        <!-- MODAL: novo lançamento (dia a dia / cartão-variável) -->
-        <div x-show="criandoTransacao" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoTransacao = false">
+        <!-- MODAL: novo/editar lançamento (dia a dia / cartão-variável / renda) -->
+        <div x-show="criandoTransacao" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoTransacao = false; editandoTransacao = null">
           <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
             <div class="flex items-center justify-between mb-3">
-              <p class="font-semibold">Novo lançamento</p>
-              <button @click="criandoTransacao = false" class="text-gray-400">✕</button>
+              <p class="font-semibold" x-text="editandoTransacao ? 'Editar lançamento' : 'Novo lançamento'"></p>
+              <button @click="criandoTransacao = false; editandoTransacao = null" class="text-gray-400">✕</button>
             </div>
             <form @submit.prevent="salvarTransacao" class="space-y-2">
               <input type="text" placeholder="Descrição" x-model="formTransacao.description" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
