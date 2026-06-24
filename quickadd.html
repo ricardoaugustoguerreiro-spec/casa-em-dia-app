@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Lançar gasto · Casa em Dia</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+  <div x-data="quickAdd()" x-init="init()" class="w-full max-w-sm bg-white rounded-2xl shadow-sm p-5">
+    <h1 class="text-base font-semibold text-gray-800 mb-1">🛒 Teve gasto hoje?</h1>
+    <p class="text-xs text-gray-500 mb-4">Lançamento rápido pro Dia a Dia — sem precisar abrir o app inteiro.</p>
+
+    <template x-if="status === 'carregando'">
+      <p class="text-sm text-gray-400">Carregando...</p>
+    </template>
+
+    <template x-if="status === 'sem_sessao'">
+      <p class="text-sm text-amber-700">Você precisa abrir o app e fazer login pelo menos uma vez nesse aparelho antes de usar o lançamento rápido. <a href="./index.html" class="underline">Abrir o app</a></p>
+    </template>
+
+    <template x-if="status === 'salvo'">
+      <div class="text-center py-6">
+        <p class="text-3xl mb-2">✅</p>
+        <p class="text-sm text-gray-700">Lançado: <span class="font-semibold" x-text="ultimoSalvo"></span></p>
+        <button @click="status = 'form'" class="mt-4 text-xs text-rose-600 underline">Lançar outro</button>
+      </div>
+    </template>
+
+    <form x-show="status === 'form'" @submit.prevent="salvar" class="space-y-2">
+      <label class="block text-xs text-gray-500">Data</label>
+      <input type="date" x-model="data" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+      <label class="block text-xs text-gray-500">O que foi</label>
+      <input type="text" x-model="descricao" required placeholder="ex: Arena Dois Irmãos" autofocus class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+      <label class="block text-xs text-gray-500">Valor (R$)</label>
+      <input type="number" step="0.01" x-model="valor" required inputmode="decimal" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+      <label class="block text-xs text-gray-500">Observação (opcional)</label>
+      <input type="text" x-model="observacao" placeholder="ex: pago no cartão Porto" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+      <button type="submit" :disabled="salvando" class="w-full bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium mt-2">
+        <span x-text="salvando ? 'Salvando...' : 'Salvar'"></span>
+      </button>
+      <p x-show="erro" class="text-xs text-red-600" x-text="erro"></p>
+    </form>
+  </div>
+
+  <script type="module">
+    import { supabase } from "./js/supabaseClient.js";
+    import Alpine from "https://esm.sh/alpinejs@3.14.3";
+
+    function hojeISO() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    Alpine.data("quickAdd", () => ({
+      status: "carregando",
+      data: hojeISO(),
+      descricao: "",
+      valor: "",
+      observacao: "",
+      salvando: false,
+      erro: "",
+      ultimoSalvo: "",
+
+      async init() {
+        const { data: sessao } = await supabase.auth.getSession();
+        this.status = sessao?.session ? "form" : "sem_sessao";
+      },
+
+      async salvar() {
+        this.salvando = true;
+        this.erro = "";
+        const { data: sessao } = await supabase.auth.getSession();
+        const uid = sessao?.session?.user?.id;
+        const { error } = await supabase.from("dia_a_dia").insert({
+          data: this.data,
+          descricao: this.descricao,
+          valor: Number(this.valor),
+          observacao: this.observacao || null,
+          status: "realizado",
+          owner_id: uid,
+        });
+        this.salvando = false;
+        if (error) {
+          this.erro = "Erro ao salvar: " + error.message;
+          return;
+        }
+        this.ultimoSalvo = this.descricao + " · R$ " + Number(this.valor).toFixed(2).replace(".", ",");
+        this.descricao = "";
+        this.valor = "";
+        this.observacao = "";
+        this.status = "salvo";
+      },
+    }));
+
+    Alpine.start();
+  </script>
+</body>
+</html>

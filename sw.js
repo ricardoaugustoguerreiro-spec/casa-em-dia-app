@@ -1,4 +1,4 @@
-const CACHE = "casa-em-dia-v6";
+const CACHE = "casa-em-dia-v7";
 const ASSETS = [
   "./manifest.json",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-180.png",
@@ -57,18 +57,24 @@ self.addEventListener("push", (event) => {
       body: dados.body || "",
       icon: "icons/icon-192.png",
       badge: "icons/icon-192.png",
-      data: { url: dados.url || "./index.html" },
+      actions: dados.actions || [],
+      data: { url: dados.url || "./index.html", semGastoUrl: dados.semGastoUrl || null },
     })
   );
 });
 
+// Notificação "teve gasto hoje?" tem 2 botões: "Sim" abre a tela rápida de
+// lançamento (quickadd.html), "Não" só fecha — sem abrir nada, sem digitar
+// nada (Web Push não permite texto inline na notificação, nem no Android).
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "./index.html";
+  if (event.action === "nao_tive") return; // só fecha, não abre nada
+
+  const url = event.action === "tive_gasto" ? "./quickadd.html" : event.notification.data?.url || "./index.html";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ("focus" in client) return client.focus();
+        if ("focus" in client && client.url.includes(url.replace("./", ""))) return client.focus();
       }
       return self.clients.openWindow(url);
     })

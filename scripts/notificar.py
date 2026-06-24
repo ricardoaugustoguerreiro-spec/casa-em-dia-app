@@ -171,6 +171,29 @@ def main():
                     marcar_enviado(url, key, chave)
                     enviadas += 1
 
+    # ---------- 4. Pergunta diária: "teve gasto hoje?" ----------
+    # Uma vez por dia (idempotente por data), pra todo mundo inscrito — financeiro é
+    # compartilhado. Botão "Sim" abre o quickadd.html (1 toque, sem digitar na própria
+    # notificação — isso não é suportado por Web Push em nenhuma plataforma, nem Android).
+    HORA_PERGUNTA_DIARIA = 20  # só dispara a partir dessa hora local (horário de Brasília = UTC-3)
+    hora_local = (agora - timedelta(hours=3)).hour
+    if hora_local >= HORA_PERGUNTA_DIARIA:
+        hoje = (agora - timedelta(hours=3)).date().isoformat()
+        chave = f"pergunta_gasto:{hoje}"
+        if not ja_enviado(url, key, chave) and subs_todos:
+            payload = {
+                "title": "Teve gasto hoje?",
+                "body": "Toca em Sim pra lançar rapidinho no Dia a Dia.",
+                "url": "./quickadd.html",
+                "actions": [
+                    {"action": "tive_gasto", "title": "Sim, lançar"},
+                    {"action": "nao_tive", "title": "Não tive"},
+                ],
+            }
+            if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_todos):
+                marcar_enviado(url, key, chave)
+                enviadas += 1
+
     print(f"Notificações novas enviadas nesta execução: {enviadas}")
 
 

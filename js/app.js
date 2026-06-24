@@ -79,6 +79,18 @@ Alpine.data("appState", () => ({
     importandoCsv: false,
     resultadoImportacao: null,
 
+    // cartões da família (fatura mensal editável, dentro de Contas Fixas)
+    cartoes: [],
+    faturasCartao: [],
+    editandoFatura: null,
+    formFatura: { amount: "", status: "pendente" },
+
+    // dia a dia: gasto real lançado manualmente OU previsão de gasto futuro
+    diaADia: [],
+    criandoDiaADia: false,
+    formDiaADia: { data: "", descricao: "", valor: "", observacao: "", status: "realizado" },
+    editandoDiaADia: null,
+
     // calendário
     events: [],
     tarefasJoias: [], // sincronizado automaticamente do Sistema de Joias (Alfa 3D)
@@ -223,12 +235,13 @@ Alpine.data("appState", () => ({
       this.view = "app";
       await this.loadDashboard();
       await this.garantirContasFixasDoMes(this.mesFinanceiro);
+      await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
       this.loadingData = false;
       this.$nextTick(() => this.animateCards());
     },
 
     async loadDashboard() {
-      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }, { data: balances }, { data: comprasParceladas }, { data: tarefasJoias }] =
+      const [{ data: categories }, { data: fixedBills }, { data: billPayments }, { data: transactions }, { data: events }, { data: diasMenstruacao }, { data: registrosIntimos }, { data: balances }, { data: comprasParceladas }, { data: tarefasJoias }, { data: cartoes }, { data: faturasCartao }, { data: diaADia }] =
         await Promise.all([
           supabase.from("categories").select("*").order("name"),
           supabase.from("fixed_bills").select("*").order("due_day"),
@@ -240,6 +253,9 @@ Alpine.data("appState", () => ({
           supabase.from("balances").select("*").order("as_of", { ascending: false }),
           supabase.from("compras_parceladas").select("*").order("parcela_inicio"),
           supabase.from("tarefas_joias").select("*").order("prazo", { ascending: true, nullsFirst: false }),
+          supabase.from("cartoes").select("*").order("nome"),
+          supabase.from("faturas_cartao").select("*"),
+          supabase.from("dia_a_dia").select("*").order("data", { ascending: false }),
         ]);
       this.categories = categories || [];
       this.fixedBills = fixedBills || [];
@@ -251,6 +267,9 @@ Alpine.data("appState", () => ({
       this.balances = balances || [];
       this.comprasParceladas = comprasParceladas || [];
       this.tarefasJoias = tarefasJoias || [];
+      this.cartoes = cartoes || [];
+      this.faturasCartao = faturasCartao || [];
+      this.diaADia = diaADia || [];
 
       const byAccount = {};
       for (const t of this.transactions) {
@@ -349,6 +368,68 @@ Alpine.data("appState", () => ({
       this.comprasParceladas = this.comprasParceladas.filter((c) => c.id !== id);
     },
 
+    // ===================== CONFERÊNCIA DE FATURA DE CARTÃO (CSV) =====================
+    // Sobe o CSV exportado da fatura (PDF ainda não tem parser confiável) e compara
+    // lançamento por lançamento com o que já foi anotado no Dia a Dia, pra achar
+    // o que bateu e o que ficou de fora (gasto não lançado, ou lançado errado).
+
+    cartaoConferenciaId: "",
+    resultadoConferencia: null,
+
+    abrirConferenciaCartao() {
+      this.$refs.inputConferenciaCartao.click();
+    },
+
+    async processarConferenciaCartao(event) {
+      const file = event.target.files[0];
+      if (!file || !this.cartaoConferenciaId) return;
+      const texto = await file.text();
+      const delim = texto.includes(";") ? ";" : ",";
+      const linhasTexto = texto.split(/\r?\n/).filter((l) => l.trim());
+      const inicioIdx = linhasTexto.findIndex((l) => /data/i.test(l) && /(valor|descri|estabelec)/i.test(l));
+      const linhasDados = inicioIdx >= 0 ? linhasTexto.slice(inicioIdx + 1) : linhasTexto;
+
+      const lancamentosFatura = [];
+      for (const linha of linhasDados) {
+        const campos = linha.split(delim).map((c) => c.trim());
+        if (campos.length < 2) continue;
+        const dataMatch = campos.find((c) => /^\d{2}\/\d{2}\/\d{4}$/.test(c) || /^\d{2}\/\d{2}$/.test(c));
+        if (!dataMatch) continue;
+        let dataISO;
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataMatch)) {
+          const [d, m, a] = dataMatch.split("/");
+          dataISO = `${a}-${m}-${d}`;
+        } else {
+          const [d, m] = dataMatch.split("/");
+          dataISO = `${this.mesFinanceiro.slice(0, 4)}-${m}-${d}`;
+        }
+        const valorStr = [...campos].reverse().find((c) => /^-?[\d.,]+$/.test(c) && c.replace(/[.,]/g, "").length > 0);
+        if (!valorStr) continue;
+        const valor = Math.abs(parseFloat(valorStr.replace(/\./g, "").replace(",", ".")));
+        if (isNaN(valor) || valor === 0) continue;
+        const descricao = campos.filter((c) => c !== dataMatch && c !== valorStr).join(" ").trim() || "Lançamento da fatura";
+        lancamentosFatura.push({ data: dataISO, descricao, valor });
+      }
+
+      const lancadosNoApp = this.diaADia.filter((d) => d.status === "realizado");
+      const comparativo = lancamentosFatura.map((l) => {
+        const match = lancadosNoApp.find((d) => Math.abs(Number(d.valor) - l.valor) < 0.01 && Math.abs(this.diffDias(d.data, l.data)) <= 3);
+        return { ...l, encontrado: !!match, lancamentoApp: match || null };
+      });
+
+      this.resultadoConferencia = {
+        cartao: this.cartaoNome(this.cartaoConferenciaId),
+        total: comparativo.length,
+        encontrados: comparativo.filter((c) => c.encontrado).length,
+        naoEncontrados: comparativo.filter((c) => !c.encontrado),
+      };
+      event.target.value = "";
+    },
+
+    diffDias(dataA, dataB) {
+      return (new Date(dataA) - new Date(dataB)) / 86400000;
+    },
+
     // ===================== IMPORTAR CSV (concilia contas fixas + cria lançamentos) =====================
 
     abrirImportarCsv() {
@@ -439,15 +520,27 @@ Alpine.data("appState", () => ({
 
     // contas fixas pagas (bill_payments) também contam como gasto — só transactions
     // subestimaria o mês, já que Internet/Água/Luz/Casa/IPTU/MEI/Carro vivem só ali.
+    // Cartões (faturas_cartao) e Dia a Dia realizado entram do mesmo jeito.
     get gastoDoMes() {
-      const mes = this.mesFinanceiro;
       const gastoTransacoes = this.transactions
-        .filter((t) => t.date.slice(0, 7) === mes && t.kind !== "renda" && !t.transferencia_interna)
+        .filter((t) => t.date.slice(0, 7) === this.mesFinanceiro && t.kind !== "renda" && !t.transferencia_interna)
         .reduce((s, t) => s + Number(t.amount), 0);
       const gastoContas = this.billPaymentsDoMes
         .filter((p) => p.status === "pago")
         .reduce((s, p) => s + Number(p.amount || 0), 0);
-      return gastoTransacoes + gastoContas;
+      const gastoCartoes = this.faturasCartaoDoMes
+        .filter((f) => f.status === "pago")
+        .reduce((s, f) => s + Number(f.amount || 0), 0);
+      return gastoTransacoes + gastoContas + gastoCartoes + this.totalDiaADiaRealizadoDoMes;
+    },
+
+    // previsão de gasto do mês = o que já é real + o que ainda está previsto pra
+    // acontecer (Dia a Dia previsto) + faturas de cartão ainda pendentes de valor real.
+    get gastoPrevistoDoMes() {
+      const cartoesPendentes = this.faturasCartaoDoMes
+        .filter((f) => f.status === "pendente")
+        .reduce((s, f) => s + Number(f.amount || 0), 0);
+      return this.gastoDoMes + this.totalDiaADiaPrevistoDoMes + cartoesPendentes;
     },
 
     get gastoDaSemana() {
@@ -586,6 +679,7 @@ Alpine.data("appState", () => ({
       const d = new Date(y, m - 2, 1);
       this.mesFinanceiro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       await this.garantirContasFixasDoMes(this.mesFinanceiro);
+      await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
     },
 
     async mesFinanceiroSeguinte() {
@@ -593,6 +687,108 @@ Alpine.data("appState", () => ({
       const d = new Date(y, m, 1);
       this.mesFinanceiro = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       await this.garantirContasFixasDoMes(this.mesFinanceiro);
+      await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
+    },
+
+    // cria a fatura pendente (valor 0, editável) de cada cartão ativo pra esse mês,
+    // igual ao padrão de garantirContasFixasDoMes — você edita o valor real depois.
+    async garantirFaturasCartaoDoMes(mes) {
+      const faltando = [];
+      for (const cartao of this.cartoes.filter((c) => c.active !== false)) {
+        const jaExiste = this.faturasCartao.some((f) => f.cartao_id === cartao.id && f.competencia === mes);
+        if (jaExiste) continue;
+        const mesVencimento = this.mesSeguinte(mes); // fatura sempre vence no mês seguinte à competência
+        const [anoV, mesNumV] = mesVencimento.split("-").map(Number);
+        const ultimoDiaDoMesVencimento = new Date(anoV, mesNumV, 0).getDate();
+        const dia = Math.min(cartao.dia_vencimento, ultimoDiaDoMesVencimento);
+        faltando.push({ cartao_id: cartao.id, competencia: mes, due_date: `${mesVencimento}-${String(dia).padStart(2, "0")}`, amount: 0, status: "pendente" });
+      }
+      if (!faltando.length) return;
+      const { data, error } = await supabase.from("faturas_cartao").insert(faltando).select();
+      if (!error && data) this.faturasCartao.push(...data);
+    },
+
+    get faturasCartaoDoMes() {
+      return this.faturasCartao.filter((f) => f.competencia === this.mesFinanceiro).sort((a, b) => this.cartaoNome(a.cartao_id).localeCompare(this.cartaoNome(b.cartao_id)));
+    },
+
+    get totalFaturasCartaoDoMes() {
+      return this.faturasCartaoDoMes.reduce((s, f) => s + Number(f.amount || 0), 0);
+    },
+
+    cartaoNome(cartaoId) {
+      return this.cartoes.find((c) => c.id === cartaoId)?.nome || "Cartão";
+    },
+
+    abrirEditarFatura(f) {
+      this.editandoFatura = f;
+      this.formFatura = { amount: f.amount, status: f.status };
+    },
+
+    async salvarFatura() {
+      const payload = { amount: Number(this.formFatura.amount), status: this.formFatura.status, paid_at: this.formFatura.status === "pago" ? new Date().toISOString() : null };
+      const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", this.editandoFatura.id);
+      if (error) return alert("Erro ao salvar fatura: " + error.message);
+      Object.assign(this.faturasCartao.find((f) => f.id === this.editandoFatura.id), payload);
+      this.editandoFatura = null;
+    },
+
+    // ===================== DIA A DIA: gasto real ou previsão de gasto futuro =====================
+
+    get diaADiaDoMes() {
+      return this.diaADia.filter((d) => d.data.slice(0, 7) === this.mesFinanceiro).sort((a, b) => b.data.localeCompare(a.data));
+    },
+
+    get totalDiaADiaRealizadoDoMes() {
+      return this.diaADiaDoMes.filter((d) => d.status === "realizado").reduce((s, d) => s + Number(d.valor || 0), 0);
+    },
+
+    get totalDiaADiaPrevistoDoMes() {
+      return this.diaADiaDoMes.filter((d) => d.status === "previsto").reduce((s, d) => s + Number(d.valor || 0), 0);
+    },
+
+    abrirNovoDiaADia(status) {
+      this.criandoDiaADia = true;
+      this.formDiaADia = { data: status === "previsto" ? "" : this.hojeISO(), descricao: "", valor: "", observacao: "", status };
+    },
+
+    abrirEditarDiaADia(d) {
+      this.editandoDiaADia = d;
+      this.formDiaADia = { data: d.data, descricao: d.descricao, valor: d.valor, observacao: d.observacao || "", status: d.status };
+    },
+
+    async salvarDiaADia() {
+      const payload = {
+        data: this.formDiaADia.data,
+        descricao: this.formDiaADia.descricao,
+        valor: Number(this.formDiaADia.valor),
+        observacao: this.formDiaADia.observacao || null,
+        status: this.formDiaADia.status,
+        updated_at: new Date().toISOString(),
+      };
+      if (this.editandoDiaADia) {
+        const { error } = await supabase.from("dia_a_dia").update(payload).eq("id", this.editandoDiaADia.id);
+        if (error) return alert("Erro ao salvar: " + error.message);
+        Object.assign(this.editandoDiaADia, payload);
+        this.editandoDiaADia = null;
+      } else {
+        const { data, error } = await supabase.from("dia_a_dia").insert({ ...payload, owner_id: this.uid }).select().single();
+        if (error) return alert("Erro ao salvar: " + error.message);
+        this.diaADia.unshift(data);
+        this.criandoDiaADia = false;
+      }
+    },
+
+    // quando o dia chega, vira realizado com o valor de fato gasto
+    realizarPrevisao(d) {
+      this.abrirEditarDiaADia({ ...d, status: "realizado" });
+    },
+
+    async excluirDiaADia(id) {
+      if (!confirm("Excluir este lançamento do Dia a dia?")) return;
+      const { error } = await supabase.from("dia_a_dia").delete().eq("id", id);
+      if (error) return alert("Erro ao excluir: " + error.message);
+      this.diaADia = this.diaADia.filter((d) => d.id !== id);
     },
 
     // mês de competência (a que a despesa se refere) é separado do mês do due_date real:
