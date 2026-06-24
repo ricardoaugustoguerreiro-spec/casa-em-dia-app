@@ -15,8 +15,7 @@ function urlBase64ToUint8Array(base64String) {
 
 export const CARTOES_FAMILIA = [
   "Itaú Ricardo",
-  "Itaú Jéssica",
-  "Itaú Pão de Açúcar",
+  "Itaú Jéssica (Pão de Açúcar)",
   "Nubank",
   "Porto (Ricardo)",
 ];
