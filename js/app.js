@@ -678,6 +678,19 @@ Alpine.data("appState", () => ({
         .reduce((s, t) => s + Number(t.amount), 0);
     },
 
+    get transacoesRendaDoMes() {
+      return this.transactions
+        .filter((t) => t.date.slice(0, 7) === this.mesFinanceiro && t.kind === "renda")
+        .sort((a, b) => b.date.localeCompare(a.date));
+    },
+
+    // saldo do mês: renda líquida (já recebida) menos gasto do mês — pra saber se sobrou
+    // ou se ficou negativo. Usa renda líquida (não bruta) porque transferência interna
+    // entre Ricardo e Jéssica não é dinheiro novo de fora do casal.
+    get saldoDoMes() {
+      return this.rendaDoMes - this.gastoDoMes;
+    },
+
     get transferenciasInternas() {
       return this.transactions
         .filter((t) => t.transferencia_interna)
@@ -988,8 +1001,9 @@ Alpine.data("appState", () => ({
       this.abaAnualAberta = this.abaAnualAberta === mes ? null : mes;
     },
 
-    // junta contas fixas (por competência) + lançamentos avulsos (por data) num único timeline,
-    // ordenado pela data real (vencimento ou data do lançamento)
+    // junta contas fixas + faturas de cartão (por competência) + lançamentos avulsos +
+    // dia a dia num único timeline — mesmas 4 fontes que gastoDoMes, pra Visão Anual
+    // bater com o que cada mês mostra individualmente.
     itensTimelineDoMes(mes) {
       const itensContas = this.billPaymentsDoCompetencia(mes).map((p) => ({
         data: p.due_date,
@@ -998,10 +1012,16 @@ Alpine.data("appState", () => ({
         status: p.status,
         tipo: "conta_fixa",
       }));
+      const itensCartoes = this.faturasCartao
+        .filter((f) => f.competencia === mes && f.status === "pago")
+        .map((f) => ({ data: f.due_date, nome: "Fatura " + this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), status: f.status, tipo: "cartao" }));
       const itensTransacoes = this.transactions
         .filter((t) => t.date.slice(0, 7) === mes && t.kind !== "renda" && !t.transferencia_interna)
         .map((t) => ({ data: t.date, nome: t.description, valor: Number(t.amount), status: "pago", tipo: "lancamento" }));
-      return [...itensContas, ...itensTransacoes].sort((a, b) => a.data.localeCompare(b.data));
+      const itensDiaADia = this.diaADia
+        .filter((d) => d.data.slice(0, 7) === mes && d.status === "realizado")
+        .map((d) => ({ data: d.data, nome: d.descricao, valor: Number(d.valor || 0), status: "pago", tipo: "dia_a_dia" }));
+      return [...itensContas, ...itensCartoes, ...itensTransacoes, ...itensDiaADia].sort((a, b) => a.data.localeCompare(b.data));
     },
 
     totalTimelineDoMes(mes) {
@@ -1025,6 +1045,7 @@ Alpine.data("appState", () => ({
       for (let i = 0; i < 12; i++) {
         const mes = `${ano}-${String(i + 1).padStart(2, "0")}`;
         await this.garantirContasFixasDoMes(mes);
+        await this.garantirFaturasCartaoDoMes(mes);
       }
     },
 
