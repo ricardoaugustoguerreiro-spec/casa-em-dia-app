@@ -45,6 +45,7 @@ Esse arquivo já é gerado automaticamente pelo próprio Sistema de Joias a cada
 Tabela `public.transactions` do Casa em Dia, com:
 - `kind = 'renda'`
 - `source = 'sistema_joias'`
+- `pessoa = 'ricardo'` (sempre — renda do Ricardo é SEMPRE deste sync, nunca lançada manualmente; renda manual na aba Renda é sempre `pessoa='jessica'`)
 - `date` = `dataRecebimento` da cobrança
 - `description` = `"Joias - {cliente}"`
 - `raw->>'cobranca_id'` = id da cobrança (chave de upsert — índice único em `supabase/migration_renda_joias.sql`, garante que nunca duplica)
