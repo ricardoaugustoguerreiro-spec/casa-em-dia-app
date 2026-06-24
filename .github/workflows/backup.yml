@@ -1,0 +1,25 @@
+name: Backup Casa em Dia
+
+on:
+  schedule:
+    # 04:12 horário de Brasília (UTC-3) = 07:12 UTC
+    - cron: "12 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q pg8000
+      - run: python scripts/backup_casa_em_dia.py
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: casa-em-dia-backup-${{ github.run_id }}
+          path: backup-output/*.json
+          retention-days: 90

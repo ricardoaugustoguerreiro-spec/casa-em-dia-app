@@ -1,0 +1,24 @@
+name: Notificações Casa em Dia
+
+on:
+  schedule:
+    # a cada 15 min, das 06:00 às 23:59 horário de Brasília (UTC-3) = 09:00-02:59 UTC
+    - cron: "*/15 9-23 * * *"
+    - cron: "*/15 0-2 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  notificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q requests pywebpush
+      - run: python scripts/notificar.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}

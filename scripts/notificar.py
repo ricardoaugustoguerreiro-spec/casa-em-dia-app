@@ -18,6 +18,7 @@ Dependências: pip install requests pywebpush
 """
 
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -41,6 +42,15 @@ def ler_segredo(texto, rotulo_inicio):
 
 
 def carregar_config():
+    # Em GitHub Actions, vem das secrets do repositório (sem precisar do PC ligado).
+    # Localmente, cai pro arquivo de segredos como sempre.
+    if os.environ.get("SUPABASE_URL"):
+        url = os.environ["SUPABASE_URL"]
+        service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+        vapid_priv = os.environ["VAPID_PRIVATE_KEY"]
+        vapid_claims = {"sub": os.environ.get("VAPID_SUBJECT", "mailto:casa-em-dia-app@example.com")}
+        return url.rstrip("/"), service_key, vapid_priv, vapid_claims
+
     secs = SECFILE.read_text(encoding="utf-8")
     vapid = VAPIDFILE.read_text(encoding="utf-8")
     url = re.search(r"Project URL:\s*(\S+)", secs).group(1)

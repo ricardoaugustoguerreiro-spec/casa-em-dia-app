@@ -2,3 +2,4 @@ _segredos-nao-compartilhar/
 *.log
 .DS_Store
 __pycache__/
+backup-output/
