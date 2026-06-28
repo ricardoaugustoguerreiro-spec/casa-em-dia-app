@@ -30,7 +30,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECFILE = BASE_DIR / "_segredos-nao-compartilhar" / "supabase.txt"
 VAPIDFILE = BASE_DIR / "_segredos-nao-compartilhar" / "vapid.txt"
 
-JANELA_EVENTO_MIN = 30  # avisa eventos que começam dentro desses minutos
+JANELA_EVENTO_HORAS = 24  # começa a avisar eventos que faltam até essas horas
 JANELA_CONTA_DIAS = 1  # avisa contas que vencem dentro desses dias
 
 
@@ -176,20 +176,33 @@ def main():
             marcar_enviado(url, key, chave)
             enviadas += 1
 
-    # ---------- 2. Eventos do calendário ----------
+    # ---------- 2. Eventos do calendário (lembrete de hora em hora até começar) ----------
+    # Cada usuário pode silenciar os lembretes de um evento específico (tabela
+    # eventos_silenciados) clicando em "Desligar avisos" na própria notificação —
+    # útil pra evitar desgaste de receber o mesmo aviso toda hora sem parar.
+    silenciados = rest(url, key, "eventos_silenciados", {"select": "event_id,user_id"})
+    muted = {(s["event_id"], s["user_id"]) for s in silenciados}
+
     eventos = rest(
         url, key, "events",
         {
             "select": "id,title,starts_at,owner_id,conjunto",
-            "starts_at": [f"gte.{agora.isoformat()}", f"lte.{(agora + timedelta(minutes=JANELA_EVENTO_MIN)).isoformat()}"],
+            "starts_at": [f"gte.{agora.isoformat()}", f"lte.{(agora + timedelta(hours=JANELA_EVENTO_HORAS)).isoformat()}"],
         },
     )
+    tick = agora.replace(minute=0, second=0, microsecond=0).isoformat()
     for ev in eventos:
-        chave = f"evento:{ev['id']}"
+        chave = f"evento:{ev['id']}:{tick}"
         if ja_enviado(url, key, chave):
             continue
-        destino = quem_ve(ev["owner_id"], ev["conjunto"])
-        payload = {"title": "Compromisso em breve", "body": f"{ev['title']} começa às {ev['starts_at'][11:16]}.", "url": "./index.html"}
+        destino = [s for s in quem_ve(ev["owner_id"], ev["conjunto"]) if (ev["id"], s["user_id"]) not in muted]
+        payload = {
+            "title": "Compromisso em breve",
+            "body": f"{ev['title']} começa às {ev['starts_at'][11:16]}.",
+            "url": "./index.html",
+            "actions": [{"action": "silenciar_evento", "title": "Desligar avisos deste evento"}],
+            "eventoId": ev["id"],
+        }
         if not destino:
             continue
         if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in destino):

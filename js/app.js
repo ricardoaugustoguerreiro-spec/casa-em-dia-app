@@ -322,8 +322,22 @@ Alpine.data("appState", () => ({
       await this.loadDashboard();
       await this.garantirContasFixasDoMes(this.mesFinanceiro);
       await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
+      await this.processarSilenciarEventoNaUrl();
       this.loadingData = false;
       this.$nextTick(() => this.animateCards());
+    },
+
+    // Clique em "Desligar avisos deste evento" na notificação push abre o app
+    // com ?silenciar_evento=<id> (o service worker não tem sessão autenticada
+    // pra gravar direto no banco, então delega pro app, que já está logado).
+    async processarSilenciarEventoNaUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const eventoId = params.get("silenciar_evento");
+      if (!eventoId || !this.uid) return;
+      await supabase.from("eventos_silenciados").upsert({ event_id: eventoId, user_id: this.uid });
+      window.history.replaceState({}, "", window.location.pathname);
+      const evento = this.events.find((e) => e.id === eventoId);
+      alert(`Avisos desligados${evento ? " para \"" + evento.title + "\"" : ""}. Você não vai mais receber lembretes de hora em hora desse compromisso.`);
     },
 
     async loadDashboard() {

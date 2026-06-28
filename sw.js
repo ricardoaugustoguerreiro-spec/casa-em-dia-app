@@ -58,7 +58,7 @@ self.addEventListener("push", (event) => {
       icon: "icons/icon-192.png",
       badge: "icons/icon-192.png",
       actions: dados.actions || [],
-      data: { url: dados.url || "./index.html", semGastoUrl: dados.semGastoUrl || null },
+      data: { url: dados.url || "./index.html", semGastoUrl: dados.semGastoUrl || null, eventoId: dados.eventoId || null },
     })
   );
 });
@@ -69,6 +69,20 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   if (event.action === "nao_tive") return; // só fecha, não abre nada
+
+  if (event.action === "silenciar_evento") {
+    const eventoId = event.notification.data?.eventoId;
+    const url = `./index.html?silenciar_evento=${eventoId}`;
+    event.waitUntil(
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) {
+          if ("focus" in client) { client.navigate(url); return client.focus(); }
+        }
+        return self.clients.openWindow(url);
+      })
+    );
+    return;
+  }
 
   const url = event.action === "tive_gasto" ? "./quickadd.html" : event.notification.data?.url || "./index.html";
   event.waitUntil(
