@@ -151,6 +151,35 @@ grep -h "create table" "H:\Meu Drive\FINANÇAS\Casa-em-Dia-App\supabase\"*.sql
 ```
 E depois de qualquer execução (manual ou agendada) do backup, **confirme no disco** que o arquivo do dia foi criado e tem tamanho > 0 — "a tarefa rodou sem erro" não é o mesmo que "o arquivo existe".
 
+### 19. Notificações novas devem ser informativas (urgente=False) por padrão (lição #16)
+Toda chamada a `enviar_pra_lista` que for para notificação informativa (agenda do dia, preview de amanhã, pergunta de gasto, pergunta do calendário, resumo semanal) deve usar `urgente=False` (que é o padrão). Só usar `urgente=True` para eventos que não podem esperar 15 min: conta vencendo, fatura vencendo, conflito financeiro, lembrete de evento em breve, conflito de agenda.
+```bash
+grep "urgente=True" scripts/notificar.py
+# Deve aparecer SÓ nessas 5 linhas (contas, faturas, conflito financeiro, evento, conflito agenda).
+# Qualquer outra linha com urgente=True é regressão desta lição.
+grep "urgente=False\|enviar_pra_lista" scripts/notificar.py | grep -v "urgente=True\|def enviar"
+# Essas linhas devem ser as informativas: agenda_hoje, agenda_amanha, calendario_jessica,
+# resumo_semana, pergunta_gasto — sem urgente=True
+```
+
+### 20. Motor de verificação automática (verificar.yml + verificar_sistema.py)
+Todo dia às 09h Brasília, `verificar_sistema.py` roda via GitHub Actions e checa:
+- Tabelas do notificar.py existem no banco
+- Subscriptions ativas (alerta se 0)
+- Última notificação enviada (alerta se > 26h)
+- Perguntas de gasto (manha/noite) enviadas hoje
+- Notificações de calendário (agenda_hoje, agenda_amanha, calendario_jessica) enviadas hoje
+- Se encontrar erro: abre GitHub Issue automaticamente (label `auto-verificacao`)
+Não confundir com o `notificar.yml` (roda a cada 15min, envia os pushs). São dois workflows diferentes.
+
+### 21. Notificações de calendário — horários e privacidade
+- **08h Brasília**: resumo do dia para cada pessoa individualmente (respeita `conjunto` e `owner_id`)
+- **08h segunda-feira**: resumo semanal dos próximos 7 dias
+- **19h**: preview de amanhã para cada pessoa
+- **21h**: pergunta só para Jéssica (filtrada por `role=membro`)
+- **a cada hora**: lembrete de evento chegando nas próximas 24h (urgente=True)
+A lógica de privacidade usa `quem_ve(owner_id, conjunto)` e `eventos_visiveis(uid, lista)` — nunca hardcode de uid. O uid da Jéssica é lido dinamicamente do banco via `role=membro`.
+
 ## Depois de verificar: o relatório
 
 Produza um relatório curto pro usuário com este formato:

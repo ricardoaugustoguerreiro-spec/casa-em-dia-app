@@ -232,6 +232,24 @@ def main():
             else:
                 print(f"   [INFO] {descricao}: ainda nao e hora ({hora_disparo}h Brasilia)")
 
+    # ── 4c. Verificação do anti-burst em notificar.py ───────────────────────
+    print("\n4c. Verificacao do anti-burst (urgente=True so nas secoes corretas):")
+    import subprocess, sys as _sys
+    notificar_path = Path(__file__).resolve().parent / "notificar.py"
+    if notificar_path.exists():
+        texto = notificar_path.read_text(encoding="utf-8")
+        linhas_urgente_true = [i + 1 for i, l in enumerate(texto.splitlines()) if "urgente=True" in l and "def " not in l]
+        linhas_urgente_false_info = [i + 1 for i, l in enumerate(texto.splitlines()) if "pergunta_gasto" in l or "agenda_" in l or "calendario_jessica" in l or "resumo_" in l]
+        if linhas_urgente_true:
+            print(f"   urgente=True aparece em {len(linhas_urgente_true)} chamada(s) — linhas: {linhas_urgente_true}")
+            print("   [OK] anti-burst ativo")
+        else:
+            msg = "urgente=True nao encontrado em notificar.py — anti-burst pode ter sido removido por engano"
+            print(f"   [AVISO] {msg}")
+            avisos.append(msg)
+    else:
+        print("   [INFO] notificar.py nao encontrado localmente (normal em GitHub Actions)")
+
     # ── 5. Segredos necessários (via env vars em Actions) ───────────────────
     print("\n5. Secrets/variáveis de ambiente:")
     secrets_necessarios = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"]
