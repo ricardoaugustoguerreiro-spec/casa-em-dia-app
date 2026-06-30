@@ -182,7 +182,7 @@
     <template x-if="!loadingData && abaAtual === 'financeiro'">
       <div>
         <!-- SELETOR DE MÊS (vale pra tudo, exceto transferências que é histórico completo) -->
-        <div x-show="abaFinanceiro !== 'transferencias'" class="flex items-center justify-between mb-4 bg-white rounded-2xl shadow-sm px-2 py-2">
+        <div class="flex items-center justify-between mb-4 bg-white rounded-2xl shadow-sm px-2 py-2">
           <button @click="mesFinanceiroAnterior" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
           <p class="font-semibold" x-text="nomeMesFinanceiro"></p>
           <button @click="mesFinanceiroSeguinte" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
@@ -193,7 +193,7 @@
         <section class="bg-white rounded-2xl shadow-sm p-4 mb-6">
           <div class="flex items-center justify-between mb-3 flex-wrap gap-1">
             <h2 class="text-sm font-semibold text-gray-700">Visão geral · <span x-text="nomeMesFinanceiro"></span></h2>
-            <p @click="irPara('dia_a_dia')" class="text-xs text-gray-400 cursor-pointer hover:underline" x-text="'Esta semana: ' + fmtMoeda(gastoDaSemana)"></p>
+            <p @click="irPara('gastos')" class="text-xs text-gray-400 cursor-pointer hover:underline" x-text="'Esta semana: ' + fmtMoeda(gastoDaSemana)"></p>
           </div>
 
           <div class="space-y-2">
@@ -228,11 +228,11 @@
                   <span class="text-xs text-gray-500">Faturas de cartão pagas</span>
                   <span class="text-xs font-medium text-gray-700 shrink-0" x-text="fmtMoeda(faturasCartaoDoMes.filter(f => f.status === 'pago').reduce((s,f) => s + Number(f.amount || 0), 0))"></span>
                 </div>
-                <div @click="irPara('dia_a_dia')" class="flex items-center justify-between gap-2 cursor-pointer hover:opacity-70">
+                <div @click="irPara('gastos')" class="flex items-center justify-between gap-2 cursor-pointer hover:opacity-70">
                   <span class="text-xs text-gray-500">Dia a dia realizado</span>
                   <span class="text-xs font-medium text-gray-700 shrink-0" x-text="fmtMoeda(totalDiaADiaRealizadoDoMes)"></span>
                 </div>
-                <div @click="irPara('cartao_variaveis')" class="flex items-center justify-between gap-2 cursor-pointer hover:opacity-70">
+                <div @click="irPara('gastos')" class="flex items-center justify-between gap-2 cursor-pointer hover:opacity-70">
                   <span class="text-xs text-gray-500">Variáveis e outros lançamentos</span>
                   <span class="text-xs font-medium text-gray-700 shrink-0" x-text="fmtMoeda(gastoTransacoesDoMes)"></span>
                 </div>
@@ -263,12 +263,10 @@
         <!-- SUB-ABAS -->
         <div class="flex gap-1 mb-5 overflow-x-auto pb-1 -mx-1 px-1">
           <button @click="abaFinanceiro='resumo'" :class="abaFinanceiro==='resumo' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Resumo</button>
-          <button @click="abaFinanceiro='contas_fixas'" :class="abaFinanceiro==='contas_fixas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Contas fixas</button>
-          <button @click="abaFinanceiro='dia_a_dia'" :class="abaFinanceiro==='dia_a_dia' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Dia a dia</button>
+          <button @click="abaFinanceiro='contas_fixas'" :class="abaFinanceiro==='contas_fixas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Compromissos fixos</button>
+          <button @click="abaFinanceiro='gastos'" :class="abaFinanceiro==='gastos' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">🛒 Gastos</button>
           <button @click="abaFinanceiro='renda'" :class="abaFinanceiro==='renda' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">💰 Renda</button>
-          <button @click="abaFinanceiro='cartao_variaveis'" :class="abaFinanceiro==='cartao_variaveis' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Cartão / Variáveis</button>
           <button @click="abaFinanceiro='parceladas'" :class="abaFinanceiro==='parceladas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Parceladas</button>
-          <button x-show="isAdmin" @click="abaFinanceiro='transferencias'" :class="abaFinanceiro==='transferencias' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Transferências</button>
           <button @click="abaFinanceiro='anual'; garantirAnoCompletoVisaoAnual()" :class="abaFinanceiro==='anual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">📅 Visão Anual</button>
         </div>
 
@@ -410,57 +408,127 @@
           </div>
         </div>
 
-        <!-- DIA A DIA -->
-        <template x-if="abaFinanceiro === 'dia_a_dia'">
-          <section class="bg-white rounded-2xl shadow-sm p-4">
-            <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
-              <h2 class="text-sm font-semibold text-gray-700">🛒 Dia a dia</h2>
-              <div class="flex items-center gap-2 flex-wrap">
-                <button @click="abrirNovaPrevisaoGrupo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">📅 Previsão em grupo</button>
-                <button @click="abrirNovoDiaADia('previsto')" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">🔮 Prever 1 dia</button>
-                <button @click="abrirNovoDiaADia('realizado')" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Gasto real</button>
-              </div>
-            </div>
-            <p class="text-xs text-gray-500 mb-3">
-              <span x-text="'Realizado: ' + fmtMoeda(totalDiaADiaRealizadoDoMes)"></span>
-              <span x-show="totalDiaADiaPrevistoDoMes > 0" x-text="' · Previsto: ' + fmtMoeda(totalDiaADiaPrevistoDoMes)"></span>
-            </p>
-            <div class="divide-y">
-              <template x-for="grupo in diaADiaAgrupadoDoMes" :key="grupo.grupo || grupo.itens[0].id">
-                <div class="py-2.5">
-                  <p class="font-medium flex items-center gap-2 flex-wrap" x-show="grupo.grupo">
-                    <span x-text="grupo.nome + ' (' + grupo.itens.length + ' dia' + (grupo.itens.length > 1 ? 's' : '') + ')'"></span>
-                    <span class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-600" x-text="fmtMoeda(grupo.itens.reduce((s,i) => s + Number(i.valor), 0))"></span>
-                  </p>
-                  <div :class="grupo.grupo ? 'pl-3 border-l border-gray-100 mt-1 space-y-1' : ''">
-                    <template x-for="d in grupo.itens" :key="d.id">
-                      <div class="flex items-center justify-between gap-2 flex-wrap">
-                        <div class="min-w-0">
-                          <p class="font-medium flex items-center gap-2 flex-wrap" x-show="!grupo.grupo">
-                            <span x-text="d.descricao"></span>
-                            <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
-                          </p>
-                          <p class="text-xs text-gray-400 flex items-center gap-2">
-                            <span x-text="fmtData(d.data) + (d.observacao ? ' · ' + d.observacao : '')"></span>
-                            <span x-show="grupo.grupo" class="text-[10px] px-1.5 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
-                          </p>
-                        </div>
-                        <div class="flex items-center gap-2 shrink-0">
-                          <p class="font-medium" x-text="fmtMoeda(d.valor)"></p>
-                          <button x-show="d.status === 'previsto'" @click="realizarPrevisao(d)" class="text-xs px-2 py-1 rounded-full border border-green-200 text-green-700 hover:bg-green-50">✓ Realizar</button>
-                          <button @click="abrirEditarDiaADia(d)" aria-label="Editar" class="text-gray-300 hover:text-gray-600 p-1">✎</button>
-                          <button @click="excluirDiaADia(d.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
-                          </button>
-                        </div>
-                      </div>
-                    </template>
-                  </div>
+        <!-- GASTOS (Dia a dia + Cartão/Variáveis unificados) -->
+        <template x-if="abaFinanceiro === 'gastos'">
+          <div class="space-y-4">
+
+            <!-- SEÇÃO: Dia a dia -->
+            <section class="bg-white rounded-2xl shadow-sm p-4">
+              <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                <h2 class="text-sm font-semibold text-gray-700">🛒 Dia a dia</h2>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button @click="abrirNovaPrevisaoGrupo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">📅 Previsão em grupo</button>
+                  <button @click="abrirNovoDiaADia('previsto')" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">🔮 Prever 1 dia</button>
+                  <button @click="abrirNovoDiaADia('realizado')" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Gasto real</button>
                 </div>
-              </template>
-              <p x-show="diaADiaDoMes.length === 0" class="text-xs text-gray-400 py-2">Nenhum lançamento do dia a dia neste mês.</p>
-            </div>
-          </section>
+              </div>
+              <p class="text-xs text-gray-500 mb-3">
+                <span x-text="'Realizado: ' + fmtMoeda(totalDiaADiaRealizadoDoMes)"></span>
+                <span x-show="totalDiaADiaPrevistoDoMes > 0" x-text="' · Previsto: ' + fmtMoeda(totalDiaADiaPrevistoDoMes)"></span>
+              </p>
+              <div class="divide-y">
+                <template x-for="grupo in diaADiaAgrupadoDoMes" :key="grupo.grupo || grupo.itens[0].id">
+                  <div class="py-2.5">
+                    <p class="font-medium flex items-center gap-2 flex-wrap" x-show="grupo.grupo">
+                      <span x-text="grupo.nome + ' (' + grupo.itens.length + ' dia' + (grupo.itens.length > 1 ? 's' : '') + ')'"></span>
+                      <span class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-600" x-text="fmtMoeda(grupo.itens.reduce((s,i) => s + Number(i.valor), 0))"></span>
+                    </p>
+                    <div :class="grupo.grupo ? 'pl-3 border-l border-gray-100 mt-1 space-y-1' : ''">
+                      <template x-for="d in grupo.itens" :key="d.id">
+                        <div class="flex items-center justify-between gap-2 flex-wrap">
+                          <div class="min-w-0">
+                            <p class="font-medium flex items-center gap-2 flex-wrap" x-show="!grupo.grupo">
+                              <span x-text="d.descricao"></span>
+                              <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
+                            </p>
+                            <p class="text-xs text-gray-400 flex items-center gap-2">
+                              <span x-text="fmtData(d.data) + (d.observacao ? ' · ' + d.observacao : '')"></span>
+                              <span x-show="grupo.grupo" class="text-[10px] px-1.5 py-0.5 rounded-full uppercase" :class="d.status === 'previsto' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'" x-text="d.status"></span>
+                            </p>
+                          </div>
+                          <div class="flex items-center gap-2 shrink-0">
+                            <p class="font-medium" x-text="fmtMoeda(d.valor)"></p>
+                            <button x-show="d.status === 'previsto'" @click="realizarPrevisao(d)" class="text-xs px-2 py-1 rounded-full border border-green-200 text-green-700 hover:bg-green-50">✓ Realizar</button>
+                            <button @click="abrirEditarDiaADia(d)" aria-label="Editar" class="text-gray-300 hover:text-gray-600 p-1">✎</button>
+                            <button @click="excluirDiaADia(d.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
+                            </button>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <p x-show="diaADiaDoMes.length === 0" class="text-xs text-gray-400 py-2">Nenhum lançamento do dia a dia neste mês.</p>
+              </div>
+            </section>
+
+            <!-- SEÇÃO: Cartão & variáveis -->
+            <section class="bg-white rounded-2xl shadow-sm p-4">
+              <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <h2 class="text-sm font-semibold text-gray-700">💳 Cartão & gastos variáveis</h2>
+                <div class="flex items-center gap-2">
+                  <select x-model="filtroCategoriaTransacao" class="rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
+                    <option value="">Todas categorias</option>
+                    <template x-for="c in categories" :key="c.id">
+                      <option :value="c.id" x-text="c.name"></option>
+                    </template>
+                  </select>
+                  <button @click="abrirNovaTransacao('variavel')" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap">+ Novo</button>
+                </div>
+              </div>
+
+              <div class="rounded-xl bg-gray-50 p-3 mb-4">
+                <p class="text-xs font-semibold text-gray-700 mb-2">🔍 Conferência de fatura (CSV)</p>
+                <p class="text-xs text-gray-500 mb-2">Exporte o extrato da fatura em CSV no app/site do banco e suba aqui — comparo com o que você já lançou no Dia a Dia. PDF de fatura ainda não tem leitura automática, só CSV por enquanto.</p>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <select x-model="cartaoConferenciaId" class="rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
+                    <option value="">Escolha o cartão...</option>
+                    <template x-for="c in cartoes" :key="c.id">
+                      <option :value="c.id" x-text="c.nome"></option>
+                    </template>
+                  </select>
+                  <input type="file" accept=".csv,.txt" class="hidden" x-ref="inputConferenciaCartao" @change="processarConferenciaCartao($event)" />
+                  <button @click="abrirConferenciaCartao" :disabled="!cartaoConferenciaId" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">📥 Subir CSV da fatura</button>
+                </div>
+                <div x-show="resultadoConferencia" class="mt-3 text-xs">
+                  <p class="text-gray-600 mb-2" x-text="resultadoConferencia ? (resultadoConferencia.cartao + ': ' + resultadoConferencia.encontrados + ' de ' + resultadoConferencia.total + ' lançamento(s) já estão no Dia a Dia.') : ''"></p>
+                  <template x-if="resultadoConferencia && resultadoConferencia.naoEncontrados.length">
+                    <div class="space-y-1">
+                      <p class="text-amber-700 font-medium">Não encontrados no Dia a Dia (faltou lançar ou valor/data diferente):</p>
+                      <div class="divide-y bg-white rounded-lg border border-amber-100">
+                        <template x-for="(l, i) in resultadoConferencia.naoEncontrados" :key="i">
+                          <div class="flex items-center justify-between gap-2 px-3 py-1.5">
+                            <span class="truncate" x-text="l.descricao"></span>
+                            <span class="shrink-0 text-gray-500" x-text="fmtData(l.data) + ' · ' + fmtMoeda(l.valor)"></span>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <div class="divide-y">
+                <template x-for="t in transacoesDoMes()" :key="t.id">
+                  <div class="flex items-center justify-between gap-2 py-2.5">
+                    <div class="min-w-0">
+                      <p class="font-medium truncate" x-text="t.description"></p>
+                      <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span x-show="t.account" class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase" x-text="t.account"></span>
+                      <p class="font-medium" x-text="fmtMoeda(t.amount)"></p>
+                      <button @click="excluirTransacao(t.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                <p x-show="transacoesDoMes().length === 0" class="text-xs text-gray-400 py-2">Nenhum lançamento de cartão/variável neste mês.</p>
+              </div>
+            </section>
+
+          </div>
         </template>
 
         <!-- RENDA -->
@@ -530,6 +598,24 @@
                 <p x-show="rendaJessicaDoMes.length === 0" class="text-xs text-gray-400 py-2">Nenhuma renda lançada neste mês ainda.</p>
               </div>
             </section>
+
+            <!-- TRANSFERÊNCIAS INTERNAS: link discreto, só visível pro admin -->
+            <section x-show="isAdmin" class="bg-white rounded-2xl shadow-sm p-4">
+              <h2 class="text-sm font-semibold text-gray-700 mb-1">🔄 Transferências entre vocês</h2>
+              <p class="text-xs text-gray-400 mb-3">PIX entre Ricardo e Jéssica — não conta como renda nem gasto, é dinheiro mudando de mão dentro de casa.</p>
+              <div class="divide-y">
+                <template x-for="t in transferenciasInternas" :key="t.id">
+                  <div class="flex items-center justify-between gap-2 py-2.5">
+                    <div class="min-w-0">
+                      <p class="font-medium truncate" x-text="t.description"></p>
+                      <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
+                    </div>
+                    <p class="font-medium shrink-0 text-gray-500" x-text="fmtMoeda(t.amount)"></p>
+                  </div>
+                </template>
+                <p x-show="transferenciasInternas.length === 0" class="text-xs text-gray-400 py-2">Nenhuma transferência interna registrada.</p>
+              </div>
+            </section>
           </div>
         </template>
 
@@ -585,73 +671,6 @@
             </form>
           </div>
         </div>
-
-        <!-- CARTÃO / VARIÁVEIS -->
-        <template x-if="abaFinanceiro === 'cartao_variaveis'">
-          <section class="bg-white rounded-2xl shadow-sm p-4">
-            <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
-              <h2 class="text-sm font-semibold text-gray-700">💳 Cartão & gastos variáveis</h2>
-              <div class="flex items-center gap-2">
-                <select x-model="filtroCategoriaTransacao" class="rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
-                  <option value="">Todas categorias</option>
-                  <template x-for="c in categories" :key="c.id">
-                    <option :value="c.id" x-text="c.name"></option>
-                  </template>
-                </select>
-                <button @click="abrirNovaTransacao('variavel')" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap">+ Novo</button>
-              </div>
-            </div>
-
-            <div class="rounded-xl bg-gray-50 p-3 mb-4">
-              <p class="text-xs font-semibold text-gray-700 mb-2">🔍 Conferência de fatura (CSV)</p>
-              <p class="text-xs text-gray-500 mb-2">Exporte o extrato da fatura em CSV no app/site do banco e suba aqui — comparo com o que você já lançou no Dia a Dia. PDF de fatura ainda não tem leitura automática, só CSV por enquanto.</p>
-              <div class="flex items-center gap-2 flex-wrap">
-                <select x-model="cartaoConferenciaId" class="rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
-                  <option value="">Escolha o cartão...</option>
-                  <template x-for="c in cartoes" :key="c.id">
-                    <option :value="c.id" x-text="c.nome"></option>
-                  </template>
-                </select>
-                <input type="file" accept=".csv,.txt" class="hidden" x-ref="inputConferenciaCartao" @change="processarConferenciaCartao($event)" />
-                <button @click="abrirConferenciaCartao" :disabled="!cartaoConferenciaId" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">📥 Subir CSV da fatura</button>
-              </div>
-              <div x-show="resultadoConferencia" class="mt-3 text-xs">
-                <p class="text-gray-600 mb-2" x-text="resultadoConferencia ? (resultadoConferencia.cartao + ': ' + resultadoConferencia.encontrados + ' de ' + resultadoConferencia.total + ' lançamento(s) já estão no Dia a Dia.') : ''"></p>
-                <template x-if="resultadoConferencia && resultadoConferencia.naoEncontrados.length">
-                  <div class="space-y-1">
-                    <p class="text-amber-700 font-medium">Não encontrados no Dia a Dia (faltou lançar ou valor/data diferente):</p>
-                    <div class="divide-y bg-white rounded-lg border border-amber-100">
-                      <template x-for="(l, i) in resultadoConferencia.naoEncontrados" :key="i">
-                        <div class="flex items-center justify-between gap-2 px-3 py-1.5">
-                          <span class="truncate" x-text="l.descricao"></span>
-                          <span class="shrink-0 text-gray-500" x-text="fmtData(l.data) + ' · ' + fmtMoeda(l.valor)"></span>
-                        </div>
-                      </template>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-            <div class="divide-y">
-              <template x-for="t in transacoesDoMes()" :key="t.id">
-                <div class="flex items-center justify-between gap-2 py-2.5">
-                  <div class="min-w-0">
-                    <p class="font-medium truncate" x-text="t.description"></p>
-                    <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
-                  </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <span x-show="t.account" class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase" x-text="t.account"></span>
-                    <p class="font-medium" :class="t.kind === 'renda' ? 'text-green-700' : ''" x-text="fmtMoeda(t.amount)"></p>
-                    <button @click="excluirTransacao(t.id)" aria-label="Excluir" class="text-gray-300 hover:text-red-500 p-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
-                    </button>
-                  </div>
-                </div>
-              </template>
-              <p x-show="transacoesDoMes().length === 0" class="text-xs text-gray-400 py-2">Nenhum lançamento de cartão/variável neste mês.</p>
-            </div>
-          </section>
-        </template>
 
         <!-- PARCELADAS -->
         <template x-if="abaFinanceiro === 'parceladas'">
@@ -749,25 +768,6 @@
           </section>
         </template>
 
-        <!-- TRANSFERÊNCIAS INTERNAS (só admin) -->
-        <template x-if="abaFinanceiro === 'transferencias'">
-          <section class="bg-white rounded-2xl shadow-sm p-4">
-            <h2 class="text-sm font-semibold text-gray-700 mb-1">🔄 Transferências entre vocês</h2>
-            <p class="text-xs text-gray-400 mb-3">PIX entre Ricardo e Jéssica — não conta como renda nem gasto novo, é só dinheiro mudando de mão dentro de casa. Listado aqui pra dar transparência total do que está acontecendo na conta.</p>
-            <div class="divide-y">
-              <template x-for="t in transferenciasInternas" :key="t.id">
-                <div class="flex items-center justify-between gap-2 py-2.5">
-                  <div class="min-w-0">
-                    <p class="font-medium truncate" x-text="t.description"></p>
-                    <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
-                  </div>
-                  <p class="font-medium shrink-0 text-gray-500" x-text="fmtMoeda(t.amount)"></p>
-                </div>
-              </template>
-              <p x-show="transferenciasInternas.length === 0" class="text-xs text-gray-400 py-2">Nenhuma transferência interna registrada.</p>
-            </div>
-          </section>
-        </template>
 
         <!-- MODAL: nova/editar conta fixa -->
         <div x-show="criandoContaFixa" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoContaFixa = false; editandoContaFixa = null">
