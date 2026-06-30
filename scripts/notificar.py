@@ -71,21 +71,22 @@ def rest(url, key, path, params=None):
     return r.json()
 
 
-def ja_enviado(url, key, chave):
-    res = rest(url, key, "notificacoes_enviadas", {"select": "chave", "chave": f"eq.{chave}"})
-    return len(res) > 0
+def ja_enviados_chave(url, key, chave):
+    """Retorna set de sub_ids que já receberam esta chave."""
+    res = rest(url, key, "notificacoes_enviadas", {"select": "sub_id", "chave": f"eq.{chave}"})
+    return {r["sub_id"] for r in res}
 
 
-def marcar_enviado(url, key, chave):
+def marcar_enviado(url, key, chave, sub_id):
     requests.post(
         f"{url}/rest/v1/notificacoes_enviadas",
         headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Prefer": "resolution=ignore-duplicates"},
-        json={"chave": chave},
+        json={"chave": chave, "sub_id": str(sub_id)},
         timeout=20,
     )
 
 
-def enviar_push(sub, payload, vapid_priv, vapid_claims):
+def enviar_push(url, key, sub, payload, vapid_priv, vapid_claims):
     try:
         webpush(
             subscription_info={
@@ -99,6 +100,15 @@ def enviar_push(sub, payload, vapid_priv, vapid_claims):
         return True
     except WebPushException as e:
         print(f"  [erro push] {sub['endpoint'][:60]}...: {e}")
+        # 410 Gone = subscription expirada/cancelada → limpa o banco pra não poluir
+        if "410" in str(e):
+            requests.delete(
+                f"{url}/rest/v1/push_subscriptions",
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                params={"id": f"eq.{sub['id']}"},
+                timeout=10,
+            )
+            print(f"  [limpeza] subscription expirada removida: {sub['id']}")
         return False
 
 
@@ -123,17 +133,27 @@ def main():
         {"select": "id,due_date,amount,fixed_bill_id,status", "status": "eq.pendente", "due_date": f"lte.{limite}"},
     )
     bills = {b["id"]: b for b in rest(url, key, "fixed_bills", {"select": "id,name"})}
+    def enviar_pra_lista(chave, payload, destino):
+        """Envia push pra cada sub em destino que ainda não recebeu esta chave.
+        Retorna quantos envios novos foram feitos (sucesso ou não — a tentativa conta)."""
+        if not destino:
+            return 0
+        ja_receberam = ja_enviados_chave(url, key, chave)
+        pendentes = [s for s in destino if str(s["id"]) not in ja_receberam]
+        if not pendentes:
+            return 0
+        novos = 0
+        for s in pendentes:
+            if enviar_push(url, key, s, payload, vapid_priv, vapid_claims):
+                marcar_enviado(url, key, chave, s["id"])
+                novos += 1
+        return novos
+
     for p in pagamentos:
         chave = f"conta:{p['id']}"
-        if ja_enviado(url, key, chave):
-            continue
         nome = bills.get(p["fixed_bill_id"], {}).get("name", "Conta")
         payload = {"title": "Conta vencendo", "body": f"{nome} vence em {p['due_date']}.", "url": "./index.html"}
-        if not subs_todos:
-            continue  # ninguém inscrito ainda: não marca como enviado, tenta de novo na próxima execução
-        if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_todos):
-            marcar_enviado(url, key, chave)
-            enviadas += 1
+        enviadas += enviar_pra_lista(chave, payload, subs_todos)
 
     # ---------- 1b. Faturas de cartão vencendo ----------
     faturas = rest(
@@ -145,15 +165,9 @@ def main():
         if not f.get("amount"):
             continue
         chave = f"fatura:{f['id']}"
-        if ja_enviado(url, key, chave):
-            continue
         nome = cartoes.get(f["cartao_id"], {}).get("nome", "Cartão")
         payload = {"title": "Fatura vencendo", "body": f"Fatura {nome} vence em {f['due_date']}.", "url": "./index.html"}
-        if not subs_todos:
-            continue
-        if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_todos):
-            marcar_enviado(url, key, chave)
-            enviadas += 1
+        enviadas += enviar_pra_lista(chave, payload, subs_todos)
 
     # ---------- 1c. Conflito financeiro: 2+ contas/faturas vencendo no mesmo dia ----------
     vencimentos_por_dia = {}
@@ -167,14 +181,8 @@ def main():
         if len(nomes) < 2:
             continue
         chave = f"conflito_financeiro:{dia}"
-        if ja_enviado(url, key, chave):
-            continue
         payload = {"title": "Conflito de contas", "body": f"{len(nomes)} contas/faturas vencem em {dia}: {', '.join(nomes)}.", "url": "./index.html"}
-        if not subs_todos:
-            continue
-        if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_todos):
-            marcar_enviado(url, key, chave)
-            enviadas += 1
+        enviadas += enviar_pra_lista(chave, payload, subs_todos)
 
     # ---------- 2. Eventos do calendário (lembrete de hora em hora até começar) ----------
     # Cada usuário pode silenciar os lembretes de um evento específico (tabela
@@ -193,8 +201,6 @@ def main():
     tick = agora.replace(minute=0, second=0, microsecond=0).isoformat()
     for ev in eventos:
         chave = f"evento:{ev['id']}:{tick}"
-        if ja_enviado(url, key, chave):
-            continue
         destino = [s for s in quem_ve(ev["owner_id"], ev["conjunto"]) if (ev["id"], s["user_id"]) not in muted]
         payload = {
             "title": "Compromisso em breve",
@@ -203,11 +209,7 @@ def main():
             "actions": [{"action": "silenciar_evento", "title": "Desligar avisos deste evento"}],
             "eventoId": ev["id"],
         }
-        if not destino:
-            continue
-        if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in destino):
-            marcar_enviado(url, key, chave)
-            enviadas += 1
+        enviadas += enviar_pra_lista(chave, payload, destino)
 
     # ---------- 3. Conflitos de agenda (qualquer par de eventos sobrepostos) ----------
     proximos_dias = [(agora + timedelta(days=d)).date().isoformat() for d in range(0, 3)]
@@ -219,24 +221,18 @@ def main():
         for b in todos_eventos[i + 1:]:
             if a["starts_at"] < b["ends_at"] and b["starts_at"] < a["ends_at"]:
                 chave = f"conflito:{a['id']}:{b['id']}"
-                if ja_enviado(url, key, chave):
-                    continue
                 vendo_a = {s["id"] for s in quem_ve(a["owner_id"], a["conjunto"])}
                 vendo_b = {s["id"] for s in quem_ve(b["owner_id"], b["conjunto"])}
                 destino = [s for s in subs_todos if s["id"] in vendo_a and s["id"] in vendo_b]
-                if not destino:
-                    continue
                 payload = {
                     "title": "Conflito de agenda",
                     "body": f"\"{a['title']}\" bate com \"{b['title']}\".",
                     "url": "./index.html",
                 }
-                if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in destino):
-                    marcar_enviado(url, key, chave)
-                    enviadas += 1
+                enviadas += enviar_pra_lista(chave, payload, destino)
 
     # ---------- 4. Pergunta diária: "teve gasto hoje?" (2x por dia) ----------
-    # Dispara ao meio-dia (12h) e à noite (20h) — idempotente por data+turno.
+    # Dispara ao meio-dia (12h) e à noite (20h) — idempotente por (data+turno, sub_id).
     # Botão "Sim" abre quickadd.html (Web Push não permite digitar texto na notificação).
     TURNOS = [
         (12, "manha", "Já teve algum gasto hoje? Lança aqui pra não esquecer."),
@@ -247,19 +243,16 @@ def main():
     for hora_turno, sufixo, body_msg in TURNOS:
         if hora_local >= hora_turno:
             chave = f"pergunta_gasto_{sufixo}:{hoje}"
-            if not ja_enviado(url, key, chave) and subs_todos:
-                payload = {
-                    "title": "Teve gasto hoje?",
-                    "body": body_msg,
-                    "url": "./quickadd.html",
-                    "actions": [
-                        {"action": "tive_gasto", "title": "Sim, lançar"},
-                        {"action": "nao_tive", "title": "Não tive"},
-                    ],
-                }
-                if any(enviar_push(s, payload, vapid_priv, vapid_claims) for s in subs_todos):
-                    marcar_enviado(url, key, chave)
-                    enviadas += 1
+            payload = {
+                "title": "Teve gasto hoje?",
+                "body": body_msg,
+                "url": "./quickadd.html",
+                "actions": [
+                    {"action": "tive_gasto", "title": "Sim, lançar"},
+                    {"action": "nao_tive", "title": "Não tive"},
+                ],
+            }
+            enviadas += enviar_pra_lista(chave, payload, subs_todos)
 
     print(f"Notificações novas enviadas nesta execução: {enviadas}")
 
