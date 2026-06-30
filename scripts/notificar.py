@@ -126,6 +126,36 @@ def main():
 
     enviadas = 0
 
+    # Controle anti-burst: máximo 1 notificação informativa por sub por execução.
+    # Notificações urgentes (conta vencendo, evento em breve) passam sem limite.
+    # Notificações informativas (agenda, pergunta de gasto) respeitam o limite —
+    # a que não foi enviada nesta rodada será enviada na próxima (15 min depois).
+    # Isso evita que 4-5 notificações cheguem juntas e o Android/MIUI suprima as extras.
+    sub_recebeu_informativa = set()
+
+    def enviar_pra_lista(chave, payload, destino, urgente=False):
+        """Envia push pra cada sub em destino que ainda não recebeu esta chave.
+        urgente=True: sem limite de burst (conta vencendo, lembrete de evento).
+        urgente=False (padrão): pula subs que já receberam outra notificação
+          informativa nesta execução — a notificação volta na próxima rodada (15 min).
+        """
+        if not destino:
+            return 0
+        ja_receberam = ja_enviados_chave(url, key, chave)
+        pendentes = [s for s in destino if str(s["id"]) not in ja_receberam]
+        if not urgente:
+            pendentes = [s for s in pendentes if s["id"] not in sub_recebeu_informativa]
+        if not pendentes:
+            return 0
+        novos = 0
+        for s in pendentes:
+            if enviar_push(url, key, s, payload, vapid_priv, vapid_claims):
+                marcar_enviado(url, key, chave, s["id"])
+                if not urgente:
+                    sub_recebeu_informativa.add(s["id"])
+                novos += 1
+        return novos
+
     # ---------- 1. Contas/prazos vencendo ----------
     limite = (agora + timedelta(days=JANELA_CONTA_DIAS)).date().isoformat()
     pagamentos = rest(
@@ -133,27 +163,12 @@ def main():
         {"select": "id,due_date,amount,fixed_bill_id,status", "status": "eq.pendente", "due_date": f"lte.{limite}"},
     )
     bills = {b["id"]: b for b in rest(url, key, "fixed_bills", {"select": "id,name"})}
-    def enviar_pra_lista(chave, payload, destino):
-        """Envia push pra cada sub em destino que ainda não recebeu esta chave.
-        Retorna quantos envios novos foram feitos (sucesso ou não — a tentativa conta)."""
-        if not destino:
-            return 0
-        ja_receberam = ja_enviados_chave(url, key, chave)
-        pendentes = [s for s in destino if str(s["id"]) not in ja_receberam]
-        if not pendentes:
-            return 0
-        novos = 0
-        for s in pendentes:
-            if enviar_push(url, key, s, payload, vapid_priv, vapid_claims):
-                marcar_enviado(url, key, chave, s["id"])
-                novos += 1
-        return novos
 
     for p in pagamentos:
         chave = f"conta:{p['id']}"
         nome = bills.get(p["fixed_bill_id"], {}).get("name", "Conta")
         payload = {"title": "Conta vencendo", "body": f"{nome} vence em {p['due_date']}.", "url": "./index.html"}
-        enviadas += enviar_pra_lista(chave, payload, subs_todos)
+        enviadas += enviar_pra_lista(chave, payload, subs_todos, urgente=True)
 
     # ---------- 1b. Faturas de cartão vencendo ----------
     faturas = rest(
@@ -167,7 +182,7 @@ def main():
         chave = f"fatura:{f['id']}"
         nome = cartoes.get(f["cartao_id"], {}).get("nome", "Cartão")
         payload = {"title": "Fatura vencendo", "body": f"Fatura {nome} vence em {f['due_date']}.", "url": "./index.html"}
-        enviadas += enviar_pra_lista(chave, payload, subs_todos)
+        enviadas += enviar_pra_lista(chave, payload, subs_todos, urgente=True)
 
     # ---------- 1c. Conflito financeiro: 2+ contas/faturas vencendo no mesmo dia ----------
     vencimentos_por_dia = {}
@@ -182,7 +197,7 @@ def main():
             continue
         chave = f"conflito_financeiro:{dia}"
         payload = {"title": "Conflito de contas", "body": f"{len(nomes)} contas/faturas vencem em {dia}: {', '.join(nomes)}.", "url": "./index.html"}
-        enviadas += enviar_pra_lista(chave, payload, subs_todos)
+        enviadas += enviar_pra_lista(chave, payload, subs_todos, urgente=True)
 
     # ---------- 2. Eventos do calendário (lembrete de hora em hora até começar) ----------
     # Cada usuário pode silenciar os lembretes de um evento específico (tabela
@@ -209,7 +224,7 @@ def main():
             "actions": [{"action": "silenciar_evento", "title": "Desligar avisos deste evento"}],
             "eventoId": ev["id"],
         }
-        enviadas += enviar_pra_lista(chave, payload, destino)
+        enviadas += enviar_pra_lista(chave, payload, destino, urgente=True)
 
     # ---------- 3. Conflitos de agenda (qualquer par de eventos sobrepostos) ----------
     proximos_dias = [(agora + timedelta(days=d)).date().isoformat() for d in range(0, 3)]
@@ -229,7 +244,7 @@ def main():
                     "body": f"\"{a['title']}\" bate com \"{b['title']}\".",
                     "url": "./index.html",
                 }
-                enviadas += enviar_pra_lista(chave, payload, destino)
+                enviadas += enviar_pra_lista(chave, payload, destino, urgente=True)
 
     # ---------- Dados base para seções de calendário (5-8) ----------
     perfis = {p["id"]: p for p in rest(url, key, "profiles", {"select": "id,display_name,role"})}
