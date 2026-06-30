@@ -188,38 +188,77 @@
           <button @click="mesFinanceiroSeguinte" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
         </div>
 
-        <!-- RESUMO DO MÊS SELECIONADO -->
-        <div class="grid gap-3 mb-6" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
-          <div @click="irPara('resumo')" class="rounded-2xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition">
-            <p class="text-xs text-gray-500 mb-1" x-text="'Gasto total · ' + nomeMesFinanceiro"></p>
-            <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDoMes)"></p>
-            <p class="text-xs text-gray-400 mt-0.5" x-show="gastoPrevistoDoMes !== gastoDoMes" x-text="'Previsão: ' + fmtMoeda(gastoPrevistoDoMes)"></p>
+        <!-- VISÃO GERAL DO MÊS: cascata entrou -> já saiu -> ainda vai sair -> sobra,
+             em vez de 6 cards soltos sem ordem nenhuma (era a principal fonte de confusão). -->
+        <section class="bg-white rounded-2xl shadow-sm p-4 mb-6">
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-1">
+            <h2 class="text-sm font-semibold text-gray-700">Visão geral · <span x-text="nomeMesFinanceiro"></span></h2>
+            <p @click="irPara('dia_a_dia')" class="text-xs text-gray-400 cursor-pointer hover:underline" x-text="'Esta semana: ' + fmtMoeda(gastoDaSemana)"></p>
           </div>
-          <div @click="irPara('dia_a_dia')" class="rounded-2xl p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition">
-            <p class="text-xs text-gray-500 mb-1">Gasto da semana (hoje)</p>
-            <p class="text-lg font-semibold" x-text="fmtMoeda(gastoDaSemana)"></p>
+
+          <div class="space-y-2">
+
+            <!-- ENTROU -->
+            <div @click="irPara('renda')" class="rounded-xl p-3 bg-emerald-50 cursor-pointer hover:shadow-md transition">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs text-emerald-700">↓ Entrou no mês (renda líquida)</p>
+                <p class="text-lg font-semibold text-emerald-800 shrink-0" x-text="fmtMoeda(rendaDoMes)"></p>
+              </div>
+              <p class="text-[11px] text-emerald-600 mt-1">
+                Ricardo: <span x-text="totalRendaRicardoDoMes > 0 ? fmtMoeda(totalRendaRicardoDoMes) : '—'"></span>
+                · Jéssica: <span x-text="totalRendaJessicaDoMes > 0 ? fmtMoeda(totalRendaJessicaDoMes) : '—'"></span>
+              </p>
+            </div>
+
+            <!-- JÁ SAIU (expansível) -->
+            <div class="rounded-xl bg-gray-50 overflow-hidden">
+              <button type="button" @click="mostrarDetalheGasto = !mostrarDetalheGasto" class="w-full flex items-center justify-between gap-2 p-3 text-left">
+                <span class="text-xs text-gray-600">↑ Já saiu no mês (gasto realizado)</span>
+                <span class="flex items-center gap-2 shrink-0">
+                  <span class="text-lg font-semibold text-gray-800" x-text="fmtMoeda(gastoDoMes)"></span>
+                  <span class="text-gray-400 text-xs" x-text="mostrarDetalheGasto ? '▲' : '▼'"></span>
+                </span>
+              </button>
+              <div x-show="mostrarDetalheGasto" x-cloak class="px-3 pb-3 space-y-1.5 border-t border-gray-200">
+                <div @click="irPara('contas_fixas')" class="flex items-center justify-between gap-2 pt-2 cursor-pointer hover:opacity-70">
+                  <span class="text-xs text-gray-500">Contas fixas pagas</span>
+                  <span class="text-xs font-medium text-gray-700 shrink-0" x-text="fmtMoeda(billPaymentsDoMes.filter(p => p.status === 'pago').reduce((s,p) => s + Number(p.amount || 0), 0))"></span>
+                </div>
+                <div @click="irPara('contas_fixas')" class="flex items-center justify-between gap-2 cursor-pointer hover:opacity-70">
+                  <span class="text-xs text-gray-500">Faturas de cartão pagas</span>
+                  <span class="text-xs font-medium text-gray-700 shrink-0" x-text="fmtMoeda(faturasCartaoDoMes.filter(f => f.status === 'pago').reduce((s,f) => s + Number(f.amount || 0), 0))"></span>
+                </div>
+                <div @click="irPara('dia_a_dia')" class="flex items-center justify-between gap-2 cursor-pointer hover:opacity-70">
+                  <span class="text-xs text-gray-500">Dia a dia realizado</span>
+                  <span class="text-xs font-medium text-gray-700 shrink-0" x-text="fmtMoeda(totalDiaADiaRealizadoDoMes)"></span>
+                </div>
+                <div @click="irPara('cartao_variaveis')" class="flex items-center justify-between gap-2 cursor-pointer hover:opacity-70">
+                  <span class="text-xs text-gray-500">Variáveis e outros lançamentos</span>
+                  <span class="text-xs font-medium text-gray-700 shrink-0" x-text="fmtMoeda(gastoTransacoesDoMes)"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- AINDA VAI SAIR -->
+            <div @click="irPara('contas_fixas')" class="rounded-xl p-3 bg-amber-50 cursor-pointer hover:shadow-md transition flex items-center justify-between gap-2">
+              <div>
+                <p class="text-xs text-amber-700">→ Ainda vai sair (pendente nesse mês)</p>
+                <p class="text-[11px] text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)/fatura(s)'"></p>
+              </div>
+              <p class="text-lg font-semibold text-amber-800 shrink-0" x-text="fmtMoeda(pendenteEmContas.total)"></p>
+            </div>
+
+            <!-- SOBRA -->
+            <div @click="irPara('renda')" class="rounded-xl p-3 cursor-pointer hover:shadow-md transition flex items-center justify-between gap-2" :class="saldoDoMes >= 0 ? 'bg-teal-50' : 'bg-red-50'">
+              <div>
+                <p class="text-xs" :class="saldoDoMes >= 0 ? 'text-teal-700' : 'text-red-700'" x-text="saldoDoMes >= 0 ? '= Sobrou (entrou − já saiu)' : '= Negativou (entrou − já saiu)'"></p>
+                <p class="text-[11px] text-gray-400 mt-0.5" x-show="gastoPrevistoDoMes !== gastoDoMes" x-text="'se contar o que ainda falta sair: ' + fmtMoeda(rendaDoMes - gastoPrevistoDoMes)"></p>
+              </div>
+              <p class="text-lg font-semibold shrink-0" :class="saldoDoMes >= 0 ? 'text-teal-800' : 'text-red-800'" x-text="fmtMoeda(Math.abs(saldoDoMes))"></p>
+            </div>
+
           </div>
-          <div @click="irPara('contas_fixas')" class="rounded-2xl p-4 bg-amber-50 shadow-sm cursor-pointer hover:shadow-md transition">
-            <p class="text-xs text-amber-700 mb-1">Pendente nesse mês</p>
-            <p class="text-lg font-semibold text-amber-800" x-text="fmtMoeda(pendenteEmContas.total)"></p>
-            <p class="text-xs text-amber-600" x-text="pendenteEmContas.quantidade + ' conta(s)'"></p>
-          </div>
-          <div @click="irPara('renda')" class="rounded-2xl p-4 bg-green-50 shadow-sm cursor-pointer hover:shadow-md transition">
-            <p class="text-xs text-green-700 mb-1">Renda do Ricardo (Joias)</p>
-            <p class="text-lg font-semibold text-green-800" x-text="totalRendaRicardoDoMes > 0 ? fmtMoeda(totalRendaRicardoDoMes) : 'Ainda não registrada'"></p>
-            <p class="text-xs text-green-600">automático, do Sistema de Joias</p>
-          </div>
-          <div @click="irPara('renda')" class="rounded-2xl p-4 bg-emerald-50 shadow-sm cursor-pointer hover:shadow-md transition">
-            <p class="text-xs text-emerald-700 mb-1">Renda da Jéssica</p>
-            <p class="text-lg font-semibold text-emerald-800" x-text="totalRendaJessicaDoMes > 0 ? fmtMoeda(totalRendaJessicaDoMes) : 'Ainda não registrada'"></p>
-            <p class="text-xs text-emerald-600">lançada manualmente</p>
-          </div>
-          <div @click="irPara('renda')" class="rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition" :class="saldoDoMes >= 0 ? 'bg-teal-50' : 'bg-red-50'">
-            <p class="text-xs mb-1" :class="saldoDoMes >= 0 ? 'text-teal-700' : 'text-red-700'" x-text="saldoDoMes >= 0 ? 'Sobrou no mês' : 'Negativou no mês'"></p>
-            <p class="text-lg font-semibold" :class="saldoDoMes >= 0 ? 'text-teal-800' : 'text-red-800'" x-text="fmtMoeda(Math.abs(saldoDoMes))"></p>
-            <p class="text-xs" :class="saldoDoMes >= 0 ? 'text-teal-600' : 'text-red-600'">renda líquida − gasto do mês</p>
-          </div>
-        </div>
+        </section>
 
         <!-- SUB-ABAS -->
         <div class="flex gap-1 mb-5 overflow-x-auto pb-1 -mx-1 px-1">
@@ -252,37 +291,21 @@
               </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm p-4">
-              <h2 class="text-sm font-semibold text-gray-700 mb-3">📑 Lançamentos do mês</h2>
+              <h2 class="text-sm font-semibold text-gray-700 mb-1">📑 Gastos variáveis recentes</h2>
+              <p class="text-xs text-gray-400 mb-3">Cartão, variáveis e lançamentos avulsos · <span x-text="nomeMesFinanceiro"></span></p>
               <div class="divide-y">
-                <template x-for="t in transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna).slice(0, 8)" :key="t.id">
+                <template x-for="t in transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna && t.kind !== 'renda').slice(0, 8)" :key="t.id">
                   <div class="flex items-center justify-between gap-2 py-2.5">
                     <div class="min-w-0">
                       <p class="font-medium truncate" x-text="t.description"></p>
                       <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
                     </div>
-                    <p class="font-medium shrink-0" :class="t.kind === 'renda' ? 'text-green-700' : ''" x-text="fmtMoeda(t.amount)"></p>
+                    <p class="font-medium shrink-0" x-text="fmtMoeda(t.amount)"></p>
                   </div>
                 </template>
-                <p x-show="transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna).length === 0" class="text-xs text-gray-400 py-1">Nenhum lançamento nesse mês.</p>
+                <p x-show="transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna && t.kind !== 'renda').length === 0" class="text-xs text-gray-400 py-1">Nenhum lançamento variável nesse mês.</p>
               </div>
-            </section>
-            <section class="bg-white rounded-2xl shadow-sm p-4" style="grid-column: 1 / -1;">
-              <h2 class="text-sm font-semibold text-gray-700 mb-3">💳 Cartões e contas (total conjunto, desde sempre)</h2>
-              <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
-                <template x-for="c in cardTotals" :key="c.nome">
-                  <div @click="irPara('cartao_variaveis')" class="rounded-xl p-3 bg-gray-50 cursor-pointer hover:shadow transition" :data-card-value="c.total">
-                    <p class="text-xs text-gray-500 mb-1" x-text="c.nome"></p>
-                    <p class="font-semibold valor-animado">R$ 0</p>
-                  </div>
-                </template>
-                <div class="rounded-xl p-3 bg-rose-50" :data-card-value="grandTotalCards">
-                  <p class="text-xs text-rose-600 mb-1">Total</p>
-                  <p class="font-semibold text-rose-700 valor-animado">R$ 0</p>
-                </div>
-              </div>
-              <p class="text-xs text-gray-400 mt-2">
-                Cartões oficiais: Itaú Ricardo, Itaú Jéssica (Pão de Açúcar), Nubank (uso conjunto), Porto (Ricardo) — todo gasto de cartão é conjunto, independente de quem usou.
-              </p>
+              <p @click="irPara('renda')" class="text-xs text-indigo-500 hover:underline cursor-pointer mt-3">Ver renda do mês → aba Renda</p>
             </section>
           </div>
         </template>
@@ -610,7 +633,7 @@
               </div>
             </div>
             <div class="divide-y">
-              <template x-for="t in transacoesDoMes('outros')" :key="t.id">
+              <template x-for="t in transacoesDoMes()" :key="t.id">
                 <div class="flex items-center justify-between gap-2 py-2.5">
                   <div class="min-w-0">
                     <p class="font-medium truncate" x-text="t.description"></p>
@@ -625,7 +648,7 @@
                   </div>
                 </div>
               </template>
-              <p x-show="transacoesDoMes('outros').length === 0" class="text-xs text-gray-400 py-2">Nenhum lançamento de cartão/variável neste mês.</p>
+              <p x-show="transacoesDoMes().length === 0" class="text-xs text-gray-400 py-2">Nenhum lançamento de cartão/variável neste mês.</p>
             </div>
           </section>
         </template>
@@ -790,11 +813,11 @@
                 <option value="Cartão">Cartão</option>
               </select>
               <select x-model="formTransacao.kind" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
-                <option value="diaria">Dia a dia</option>
                 <option value="variavel">Variável/cartão</option>
                 <option value="fixa">Fixa (avulsa)</option>
                 <option value="renda">Renda</option>
               </select>
+              <p class="text-[11px] text-gray-400 -mt-1">Gasto do dia a dia? Lance na aba "Dia a dia", não aqui.</p>
               <select x-show="formTransacao.kind === 'renda'" x-model="formTransacao.pessoa" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
                 <option value="jessica">Renda da Jéssica</option>
                 <option value="ricardo">Renda do Ricardo (avulsa, fora do Sistema de Joias)</option>

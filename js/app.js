@@ -21,25 +21,6 @@ function base64ToBuffer(base64) {
   return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 }
 
-export const CARTOES_FAMILIA = [
-  "Itaú Ricardo",
-  "Itaú Jéssica (Pão de Açúcar)",
-  "Nubank",
-  "Porto (Ricardo)",
-];
-
-function animateCount(el, target, duration = 700) {
-  const start = performance.now();
-  function tick(now) {
-    const p = Math.min(1, (now - start) / duration);
-    const eased = 1 - Math.pow(1 - p, 3);
-    const current = target * eased;
-    el.textContent = current.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    if (p < 1) requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-}
-
 Alpine.data("appState", () => ({
     // auth
     view: "loading", // loading | login | app
@@ -63,13 +44,12 @@ Alpine.data("appState", () => ({
     billPayments: [],
     categories: [],
     transactions: [],
-    cardTotals: [],
-    grandTotalCards: 0,
     balances: [],
     loadingData: true,
     abaAtual: "financeiro", // financeiro | calendario | ajustes
     abaFinanceiro: "resumo", // resumo | contas_fixas | dia_a_dia | cartao_variaveis
     mesFinanceiro: new Date().toISOString().slice(0, 7), // "AAAA-MM"
+    mostrarDetalheGasto: false, // expande/recolhe o detalhamento de "Já saiu" na Visão geral do mês
     formPerfil: { display_name: "", color: "#7c3aed" },
     formSaldo: { amount: "", notes: "" },
     formCategoria: { name: "", kind: "variavel", color: "#64748b" },
@@ -77,7 +57,7 @@ Alpine.data("appState", () => ({
     formContaFixa: { name: "", amount: "", due_day: "10", category_id: "", vence_mes_seguinte: false },
     editandoContaFixa: null,
     criandoTransacao: false,
-    formTransacao: { description: "", amount: "", date: "", account: "", kind: "diaria", category_id: "", pessoa: "jessica" },
+    formTransacao: { description: "", amount: "", date: "", account: "", kind: "variavel", category_id: "", pessoa: "jessica" },
     editandoTransacao: null,
     abaAnualAberta: null, // "AAAA-MM" do mês expandido na Visão Anual
     anoVisaoAnual: new Date().getFullYear(),
@@ -324,7 +304,6 @@ Alpine.data("appState", () => ({
       await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
       await this.processarSilenciarEventoNaUrl();
       this.loadingData = false;
-      this.$nextTick(() => this.animateCards());
     },
 
     // Clique em "Desligar avisos deste evento" na notificação push abre o app
@@ -370,30 +349,6 @@ Alpine.data("appState", () => ({
       this.cartoes = cartoes || [];
       this.faturasCartao = faturasCartao || [];
       this.diaADia = diaADia || [];
-
-      const byAccount = {};
-      for (const t of this.transactions) {
-        const key = t.account || "Sem conta definida";
-        byAccount[key] = (byAccount[key] || 0) + Number(t.amount);
-      }
-      this.cardTotals = Object.entries(byAccount).map(([nome, total]) => ({ nome, total }));
-      this.grandTotalCards = this.cardTotals.reduce((s, c) => s + c.total, 0);
-    },
-
-    animateCards() {
-      const cards = document.querySelectorAll("[data-card-value]");
-      cards.forEach((card, i) => {
-        card.style.opacity = "0";
-        card.style.transform = "translateY(8px)";
-        setTimeout(() => {
-          card.style.transition = "opacity .4s ease, transform .4s ease";
-          card.style.opacity = "1";
-          card.style.transform = "translateY(0)";
-          const target = parseFloat(card.dataset.cardValue);
-          const valEl = card.querySelector(".valor-animado");
-          if (valEl) animateCount(valEl, target);
-        }, i * 140);
-      });
     },
 
     async excluirTransacao(id) {
@@ -401,7 +356,6 @@ Alpine.data("appState", () => ({
       const { error } = await supabase.from("transactions").delete().eq("id", id);
       if (error) return alert("Erro ao excluir: " + error.message);
       this.transactions = this.transactions.filter((t) => t.id !== id);
-      this.recalcularCards();
     },
 
     async excluirPagamento(id) {
@@ -606,7 +560,6 @@ Alpine.data("appState", () => ({
 
         this.resultadoImportacao = { contasMarcadas, novosLancamentos };
         await this.loadDashboard();
-        this.$nextTick(() => this.animateCards());
       } catch (e) {
         alert("Erro ao importar: " + e.message);
       } finally {
@@ -621,17 +574,23 @@ Alpine.data("appState", () => ({
     // contas fixas pagas (bill_payments) também contam como gasto — só transactions
     // subestimaria o mês, já que Internet/Água/Luz/Casa/IPTU/MEI/Carro vivem só ali.
     // Cartões (faturas_cartao) e Dia a Dia realizado entram do mesmo jeito.
-    get gastoDoMes() {
-      const gastoTransacoes = this.transactions
+    // soma bruta das transações avulsas do mês (cartão/variáveis), sem filtro de categoria —
+    // usado tanto em gastoDoMes quanto no detalhamento "Já saiu" da Visão geral, pra nunca
+    // divergir mesmo se o usuário estiver com um filtro de categoria ativo na lista.
+    get gastoTransacoesDoMes() {
+      return this.transactions
         .filter((t) => t.date.slice(0, 7) === this.mesFinanceiro && t.kind !== "renda" && !t.transferencia_interna)
         .reduce((s, t) => s + Number(t.amount), 0);
+    },
+
+    get gastoDoMes() {
       const gastoContas = this.billPaymentsDoMes
         .filter((p) => p.status === "pago")
         .reduce((s, p) => s + Number(p.amount || 0), 0);
       const gastoCartoes = this.faturasCartaoDoMes
         .filter((f) => f.status === "pago")
         .reduce((s, f) => s + Number(f.amount || 0), 0);
-      return gastoTransacoes + gastoContas + gastoCartoes + this.totalDiaADiaRealizadoDoMes;
+      return this.gastoTransacoesDoMes + gastoContas + gastoCartoes + this.totalDiaADiaRealizadoDoMes;
     },
 
     // previsão de gasto do mês = o que já é real + o que ainda está previsto pra
@@ -1053,13 +1012,18 @@ Alpine.data("appState", () => ({
     // dia a dia num único timeline — mesmas 4 fontes que gastoDoMes, pra Visão Anual
     // bater com o que cada mês mostra individualmente.
     itensTimelineDoMes(mes) {
-      const itensContas = this.billPaymentsDoCompetencia(mes).map((p) => ({
-        data: p.due_date,
-        nome: this.billName(p.fixed_bill_id),
-        valor: Number(p.amount || 0),
-        status: p.status,
-        tipo: "conta_fixa",
-      }));
+      // só contas JÁ PAGAS contam como gasto realizado — mesma regra de gastoDoMes,
+      // senão a Visão Anual mostra um total maior que o "Gasto total" do mês individual
+      // (contas ainda pendentes não são gasto que já saiu).
+      const itensContas = this.billPaymentsDoCompetencia(mes)
+        .filter((p) => p.status === "pago")
+        .map((p) => ({
+          data: p.due_date,
+          nome: this.billName(p.fixed_bill_id),
+          valor: Number(p.amount || 0),
+          status: p.status,
+          tipo: "conta_fixa",
+        }));
       const itensCartoes = this.faturasCartao
         .filter((f) => f.competencia === mes && f.status === "pago")
         .map((f) => ({ data: f.due_date, nome: "Fatura " + this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), status: f.status, tipo: "cartao" }));
@@ -1127,11 +1091,13 @@ Alpine.data("appState", () => ({
       this.abaFinanceiro = aba;
     },
 
-    transacoesDoMes(filtroKind) {
+    // lista unificada de lançamentos avulsos do mês (cartão/variáveis/dia a dia via CSV),
+    // sempre excluindo renda (que tem lista própria na aba Renda) e transferência interna.
+    transacoesDoMes() {
       return this.transactions
         .filter((t) => t.date.slice(0, 7) === this.mesFinanceiro)
         .filter((t) => !t.transferencia_interna)
-        .filter((t) => (filtroKind === "diaria" ? t.kind === "diaria" : t.kind !== "diaria"))
+        .filter((t) => t.kind !== "renda")
         .filter((t) => !this.filtroCategoriaTransacao || t.category_id === this.filtroCategoriaTransacao)
         .sort((a, b) => b.date.localeCompare(a.date));
     },
@@ -1264,17 +1230,6 @@ Alpine.data("appState", () => ({
       }
       this.criandoTransacao = false;
       await this.loadDashboard();
-      this.$nextTick(() => this.animateCards());
-    },
-
-    recalcularCards() {
-      const byAccount = {};
-      for (const t of this.transactions) {
-        const key = t.account || "Sem conta definida";
-        byAccount[key] = (byAccount[key] || 0) + Number(t.amount);
-      }
-      this.cardTotals = Object.entries(byAccount).map(([nome, total]) => ({ nome, total }));
-      this.grandTotalCards = this.cardTotals.reduce((s, c) => s + c.total, 0);
     },
 
     async exportarBackup() {
@@ -1327,7 +1282,6 @@ Alpine.data("appState", () => ({
         }
         alert("Backup importado com sucesso.");
         await this.loadDashboard();
-        this.$nextTick(() => this.animateCards());
       } catch (e) {
         alert("Erro ao importar backup: " + e.message);
       } finally {
