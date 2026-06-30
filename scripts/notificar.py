@@ -231,6 +231,139 @@ def main():
                 }
                 enviadas += enviar_pra_lista(chave, payload, destino)
 
+    # ---------- Dados base para seções de calendário (5-8) ----------
+    perfis = {p["id"]: p for p in rest(url, key, "profiles", {"select": "id,display_name,role"})}
+
+    # Subscriptions agrupadas por user_id
+    subs_por_user = {}
+    for s in subs_todos:
+        subs_por_user.setdefault(s["user_id"], []).append(s)
+
+    # UID da Jéssica (membro, não admin) — sem hardcode, lido do banco
+    uid_jessica = next((uid for uid, p in perfis.items() if p["role"] == "membro"), None)
+    subs_jessica = subs_por_user.get(uid_jessica, []) if uid_jessica else []
+
+    # Helpers de tempo local (Brasília = UTC-3)
+    agora_br = agora - timedelta(hours=3)
+    hoje_br = agora_br.date().isoformat()
+    amanha_br = (agora_br + timedelta(days=1)).date().isoformat()
+    hora_br = agora_br.hour
+    semana_br = agora_br.isocalendar()[1]  # número da semana ISO
+
+    # Busca eventos por janela de data (converte meia-noite Brasília pra UTC)
+    def eventos_janela(data_inicio_br, data_fim_br):
+        """Retorna eventos que começam no período [meia-noite data_inicio .. meia-noite data_fim] Brasília."""
+        utc_ini = datetime(
+            int(data_inicio_br[:4]), int(data_inicio_br[5:7]), int(data_inicio_br[8:]),
+            3, 0, 0, tzinfo=timezone.utc
+        )
+        utc_fim = datetime(
+            int(data_fim_br[:4]), int(data_fim_br[5:7]), int(data_fim_br[8:]),
+            3, 0, 0, tzinfo=timezone.utc
+        )
+        return rest(url, key, "events", {
+            "select": "id,title,starts_at,owner_id,conjunto",
+            "starts_at": [f"gte.{utc_ini.isoformat()}", f"lt.{utc_fim.isoformat()}"],
+            "order": "starts_at",
+        })
+
+    def eventos_visiveis(uid, lista):
+        """Filtra os eventos que o usuário uid pode ver (dono ou conjunto)."""
+        return [ev for ev in lista if ev["conjunto"] or ev["owner_id"] == uid]
+
+    def formatar_lista(evs):
+        """Transforma lista de eventos em texto legível: 'Titulo as HH:MM, ...'"""
+        partes = []
+        for ev in evs:
+            hora_str = ev["starts_at"][11:16]
+            # Converte UTC pra Brasília
+            h = int(hora_str[:2]) - 3
+            m = hora_str[3:]
+            if h < 0:
+                h += 24
+            partes.append(f"{ev['title']} as {h:02d}:{m}")
+        return ", ".join(partes) if partes else ""
+
+    # ---------- 5. Resumo matinal da agenda (08h Brasília, por pessoa) ----------
+    # Cada um recebe seus compromissos do dia — privacidade respeitada.
+    if hora_br >= 8:
+        evs_hoje = eventos_janela(hoje_br, amanha_br)
+        for uid, subs_user in subs_por_user.items():
+            nome = perfis.get(uid, {}).get("display_name", "")
+            meus = eventos_visiveis(uid, evs_hoje)
+            chave = f"agenda_hoje:{uid}:{hoje_br}"
+            if meus:
+                lista = formatar_lista(meus)
+                body = f"Hoje: {lista}."
+            else:
+                body = "Hoje sua agenda esta livre!"
+            payload = {
+                "title": f"Bom dia, {nome}!" if nome else "Bom dia!",
+                "body": body,
+                "url": "./index.html",
+            }
+            enviadas += enviar_pra_lista(chave, payload, subs_user)
+
+    # ---------- 6. Preview dos compromissos de amanhã (19h Brasília, por pessoa) ----------
+    if hora_br >= 19:
+        depois_amanha_br = (agora_br + timedelta(days=2)).date().isoformat()
+        evs_amanha = eventos_janela(amanha_br, depois_amanha_br)
+        for uid, subs_user in subs_por_user.items():
+            nome = perfis.get(uid, {}).get("display_name", "")
+            meus = eventos_visiveis(uid, evs_amanha)
+            chave = f"agenda_amanha:{uid}:{hoje_br}"
+            if meus:
+                lista = formatar_lista(meus)
+                body = f"Amanha: {lista}."
+            else:
+                body = "Amanha sua agenda esta livre!"
+            payload = {
+                "title": f"Agenda de amanha, {nome}" if nome else "Agenda de amanha",
+                "body": body,
+                "url": "./index.html",
+            }
+            enviadas += enviar_pra_lista(chave, payload, subs_user)
+
+    # ---------- 7. Pergunta do calendário pra Jéssica (21h Brasília) ----------
+    # Pergunta diária só pra ela: quer adicionar algo no calendário?
+    if hora_br >= 21 and subs_jessica:
+        chave = f"calendario_jessica:{hoje_br}"
+        payload = {
+            "title": "Calendario",
+            "body": "Jessica, quer adicionar algo no seu calendario para amanha ou essa semana?",
+            "url": "./index.html",
+            "actions": [
+                {"action": "abrir_calendario", "title": "Abrir calendario"},
+            ],
+        }
+        enviadas += enviar_pra_lista(chave, payload, subs_jessica)
+
+    # ---------- 8. Resumo semanal (segunda-feira às 08h Brasília) ----------
+    # Mostra os compromissos dos próximos 7 dias pra cada um.
+    if agora_br.weekday() == 0 and hora_br >= 8:  # weekday 0 = segunda
+        fim_semana_br = (agora_br + timedelta(days=7)).date().isoformat()
+        evs_semana = eventos_janela(hoje_br, fim_semana_br)
+        for uid, subs_user in subs_por_user.items():
+            nome = perfis.get(uid, {}).get("display_name", "")
+            meus = eventos_visiveis(uid, evs_semana)
+            chave = f"resumo_semana:{uid}:{agora_br.year}w{semana_br}"
+            if meus:
+                # Agrupa por dia para mensagem mais legível
+                por_dia = {}
+                for ev in meus:
+                    dia = ev["starts_at"][:10]
+                    por_dia.setdefault(dia, []).append(ev["title"])
+                partes = [f"{dia[8:10]}/{dia[5:7]}: {', '.join(nomes)}" for dia, nomes in sorted(por_dia.items())]
+                body = f"Esta semana ({len(meus)} compromisso(s)): {'; '.join(partes)}."
+            else:
+                body = "Esta semana sua agenda esta livre!"
+            payload = {
+                "title": f"Semana de {nome}" if nome else "Sua semana",
+                "body": body,
+                "url": "./index.html",
+            }
+            enviadas += enviar_pra_lista(chave, payload, subs_user)
+
     # ---------- 4. Pergunta diária: "teve gasto hoje?" (2x por dia) ----------
     # Dispara ao meio-dia (12h) e à noite (20h) — idempotente por (data+turno, sub_id).
     # Botão "Sim" abre quickadd.html (Web Push não permite digitar texto na notificação).

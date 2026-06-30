@@ -171,24 +171,66 @@ def main():
         print(f"   [ERRO] {msg}")
         erros.append(msg)
 
+    agora_br = agora - timedelta(hours=3)
+    hoje = agora_br.date().isoformat()
+    hora_br = agora_br.hour
+
     # ── 4. Pergunta diária: foi enviada hoje? ───────────────────────────────
-    print("\n4. Pergunta diária 'Teve gasto hoje?':")
-    hoje = (agora - timedelta(hours=3)).date().isoformat()
-    for sufixo, hora_nome in [("manha", "12h"), ("noite", "20h")]:
+    print("\n4. Pergunta diaria 'Teve gasto hoje?':")
+    for sufixo, hora_disparo in [("manha", 12), ("noite", 20)]:
         chave = f"pergunta_gasto_{sufixo}:{hoje}"
         status, res = rest_get(url, key, "notificacoes_enviadas",
                                 {"select": "chave,enviado_em", "chave": f"eq.{chave}"})
         if status == 200 and res:
-            print(f"   [OK] {hora_nome} ({sufixo}): enviada às {res[0]['enviado_em'][11:16]} UTC")
+            print(f"   [OK] {sufixo} ({hora_disparo}h): enviada")
         else:
-            hora_local = (agora - timedelta(hours=3)).hour
-            hora_disparo = 12 if sufixo == "manha" else 20
-            if hora_local >= hora_disparo:
-                msg = f"Pergunta do {hora_nome} ({sufixo}) não foi enviada hoje ainda — sistema pode estar falhando"
+            if hora_br >= hora_disparo:
+                msg = f"Pergunta de gasto '{sufixo}' nao enviada hoje - sistema pode estar parado"
                 print(f"   [AVISO] {msg}")
                 avisos.append(msg)
             else:
-                print(f"   [INFO] {hora_nome} ({sufixo}): ainda não é hora (dispara às {hora_nome} Brasília)")
+                print(f"   [INFO] {sufixo}: ainda nao e hora ({hora_disparo}h Brasilia)")
+
+    # ── 4b. Notificações de calendário foram enviadas hoje? ──────────────────
+    print("\n4b. Notificacoes de calendario hoje:")
+    status_p, perfis_list = rest_get(url, key, "profiles", {"select": "id,display_name,role"})
+    perfis_ok = perfis_list if status_p == 200 and isinstance(perfis_list, list) else []
+
+    checks_cal = [
+        ("agenda_hoje", 8, "Resumo matinal da agenda"),
+        ("agenda_amanha", 19, "Preview de amanha"),
+        ("calendario_jessica", 21, "Pergunta calendario Jessica"),
+    ]
+
+    for tipo, hora_disparo, descricao in checks_cal:
+        if tipo == "calendario_jessica":
+            chave = f"{tipo}:{hoje}"
+            s2, r2 = rest_get(url, key, "notificacoes_enviadas",
+                               {"select": "chave", "chave": f"eq.{chave}"})
+            if s2 == 200 and r2:
+                print(f"   [OK] {descricao}: enviada")
+            elif hora_br >= hora_disparo:
+                msg = f"'{descricao}' nao enviada hoje"
+                print(f"   [AVISO] {msg}")
+                avisos.append(msg)
+            else:
+                print(f"   [INFO] {descricao}: ainda nao e hora ({hora_disparo}h Brasilia)")
+        else:
+            enviados_users = []
+            for p in perfis_ok:
+                chave = f"{tipo}:{p['id']}:{hoje}"
+                s2, r2 = rest_get(url, key, "notificacoes_enviadas",
+                                   {"select": "chave", "chave": f"eq.{chave}"})
+                if s2 == 200 and r2:
+                    enviados_users.append(p.get("display_name", p["id"][:8]))
+            if enviados_users:
+                print(f"   [OK] {descricao}: enviada para {', '.join(enviados_users)}")
+            elif hora_br >= hora_disparo:
+                msg = f"'{descricao}' nao enviada hoje para nenhum usuario"
+                print(f"   [AVISO] {msg}")
+                avisos.append(msg)
+            else:
+                print(f"   [INFO] {descricao}: ainda nao e hora ({hora_disparo}h Brasilia)")
 
     # ── 5. Segredos necessários (via env vars em Actions) ───────────────────
     print("\n5. Secrets/variáveis de ambiente:")
