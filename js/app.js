@@ -68,7 +68,9 @@ Alpine.data("appState", () => ({
     criandoParcelada: false,
     formParcelada: { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: "", parcela_fim: "" },
     importandoCsv: false,
+    processandoArquivo: false, // spinner enquanto lê CSV/PDF (PDF demora um instante)
     resultadoImportacao: null,
+    _pdfjs: null, // pdf.js carregado sob demanda (só quando sobe um PDF)
 
     // cartões da família (fatura mensal editável, dentro de Contas Fixas)
     cartoes: [],
@@ -422,8 +424,8 @@ Alpine.data("appState", () => ({
       this.comprasParceladas = this.comprasParceladas.filter((c) => c.id !== id);
     },
 
-    // ===================== CONFERÊNCIA DE FATURA DE CARTÃO (CSV) =====================
-    // Sobe o CSV exportado da fatura (PDF ainda não tem parser confiável) e compara
+    // ===================== CONFERÊNCIA DE FATURA DE CARTÃO (CSV/PDF) =====================
+    // Sobe a fatura exportada (CSV/TXT ou PDF — ver _lerArquivoFinanceiro) e compara
     // lançamento por lançamento com o que já foi anotado no Dia a Dia, pra achar
     // o que bateu e o que ficou de fora (gasto não lançado, ou lançado errado).
 
@@ -437,54 +439,153 @@ Alpine.data("appState", () => ({
     async processarConferenciaCartao(event) {
       const file = event.target.files[0];
       if (!file || !this.cartaoConferenciaId) return;
-      const texto = await file.text();
-      const delim = texto.includes(";") ? ";" : ",";
-      const linhasTexto = texto.split(/\r?\n/).filter((l) => l.trim());
-      const inicioIdx = linhasTexto.findIndex((l) => /data/i.test(l) && /(valor|descri|estabelec)/i.test(l));
-      const linhasDados = inicioIdx >= 0 ? linhasTexto.slice(inicioIdx + 1) : linhasTexto;
+      this.processandoArquivo = true;
+      try {
+        const anoMes = this.mesFinanceiro.slice(0, 4);
+        const { linhas, delim, ehPdf } = await this._lerArquivoFinanceiro(file);
+        const inicioIdx = linhas.findIndex((l) => /data/i.test(l) && /(valor|descri|estabelec)/i.test(l));
+        const linhasDados = inicioIdx >= 0 ? linhas.slice(inicioIdx + 1) : linhas;
 
-      const lancamentosFatura = [];
-      for (const linha of linhasDados) {
-        const campos = linha.split(delim).map((c) => c.trim());
-        if (campos.length < 2) continue;
-        const dataMatch = campos.find((c) => /^\d{2}\/\d{2}\/\d{4}$/.test(c) || /^\d{2}\/\d{2}$/.test(c));
-        if (!dataMatch) continue;
-        let dataISO;
-        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataMatch)) {
-          const [d, m, a] = dataMatch.split("/");
-          dataISO = `${a}-${m}-${d}`;
-        } else {
-          const [d, m] = dataMatch.split("/");
-          dataISO = `${this.mesFinanceiro.slice(0, 4)}-${m}-${d}`;
+        const lancamentosFatura = [];
+        for (const linha of linhasDados) {
+          const campos = this._camposDaLinha(linha, delim, ehPdf, anoMes);
+          if (campos.length < 2) continue;
+          const dataMatch = campos.find((c) => /^\d{2}\/\d{2}\/\d{4}$/.test(c) || /^\d{2}\/\d{2}$/.test(c));
+          if (!dataMatch) continue;
+          let dataISO;
+          if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataMatch)) {
+            const [d, m, a] = dataMatch.split("/");
+            dataISO = `${a}-${m}-${d}`;
+          } else {
+            const [d, m] = dataMatch.split("/");
+            dataISO = `${anoMes}-${m}-${d}`;
+          }
+          const valorStr = [...campos].reverse().find((c) => /^-?[\d.,]+$/.test(c) && c.replace(/[.,]/g, "").length > 0);
+          if (!valorStr) continue;
+          const valor = Math.abs(parseFloat(valorStr.replace(/\./g, "").replace(",", ".")));
+          if (isNaN(valor) || valor === 0) continue;
+          const descricao = campos.filter((c) => c !== dataMatch && c !== valorStr).join(" ").trim() || "Lançamento da fatura";
+          lancamentosFatura.push({ data: dataISO, descricao, valor });
         }
-        const valorStr = [...campos].reverse().find((c) => /^-?[\d.,]+$/.test(c) && c.replace(/[.,]/g, "").length > 0);
-        if (!valorStr) continue;
-        const valor = Math.abs(parseFloat(valorStr.replace(/\./g, "").replace(",", ".")));
-        if (isNaN(valor) || valor === 0) continue;
-        const descricao = campos.filter((c) => c !== dataMatch && c !== valorStr).join(" ").trim() || "Lançamento da fatura";
-        lancamentosFatura.push({ data: dataISO, descricao, valor });
+
+        const lancadosNoApp = this.diaADia.filter((d) => d.status === "realizado");
+        const comparativo = lancamentosFatura.map((l) => {
+          const match = lancadosNoApp.find((d) => Math.abs(Number(d.valor) - l.valor) < 0.01 && Math.abs(this.diffDias(d.data, l.data)) <= 3);
+          return { ...l, encontrado: !!match, lancamentoApp: match || null };
+        });
+
+        this.resultadoConferencia = {
+          cartao: this.cartaoNome(this.cartaoConferenciaId),
+          total: comparativo.length,
+          encontrados: comparativo.filter((c) => c.encontrado).length,
+          naoEncontrados: comparativo.filter((c) => !c.encontrado),
+        };
+      } catch (e) {
+        alert("Erro ao ler o arquivo: " + e.message);
+      } finally {
+        this.processandoArquivo = false;
+        event.target.value = "";
       }
-
-      const lancadosNoApp = this.diaADia.filter((d) => d.status === "realizado");
-      const comparativo = lancamentosFatura.map((l) => {
-        const match = lancadosNoApp.find((d) => Math.abs(Number(d.valor) - l.valor) < 0.01 && Math.abs(this.diffDias(d.data, l.data)) <= 3);
-        return { ...l, encontrado: !!match, lancamentoApp: match || null };
-      });
-
-      this.resultadoConferencia = {
-        cartao: this.cartaoNome(this.cartaoConferenciaId),
-        total: comparativo.length,
-        encontrados: comparativo.filter((c) => c.encontrado).length,
-        naoEncontrados: comparativo.filter((c) => !c.encontrado),
-      };
-      event.target.value = "";
     },
 
     diffDias(dataA, dataB) {
       return (new Date(dataA) - new Date(dataB)) / 86400000;
     },
 
-    // ===================== IMPORTAR CSV (concilia contas fixas + cria lançamentos) =====================
+    // ===================== LEITURA DE ARQUIVO (CSV + PDF) =====================
+    // Tanto "Importar CSV" (contas fixas) quanto "Subir fatura" (conferência do
+    // cartão) aceitam CSV/TXT e PDF. Muitos bancos só mandam extrato/fatura em PDF.
+    // O parser de linha (_camposDaLinha) é o mesmo pros dois formatos: acha data,
+    // valor e descrição por regex — então o resto do fluxo não muda.
+
+    // Carrega o pdf.js só na primeira vez que sobe um PDF (não pesa o app no dia a dia).
+    async _carregarPdfJs() {
+      if (this._pdfjs) return this._pdfjs;
+      const ver = "4.0.379";
+      const lib = await import(`https://cdn.jsdelivr.net/npm/pdfjs-dist@${ver}/build/pdf.min.mjs`);
+      lib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${ver}/build/pdf.worker.min.mjs`;
+      this._pdfjs = lib;
+      return lib;
+    },
+
+    // Devolve as linhas de texto do arquivo. CSV/TXT → split direto. PDF → extrai o
+    // texto com pdf.js e reagrupa os pedaços por linha (mesma coordenada vertical),
+    // da esquerda pra direita, virando uma linha de texto por lançamento.
+    async _lerArquivoFinanceiro(file) {
+      const nome = (file.name || "").toLowerCase();
+      const ehPdf = nome.endsWith(".pdf") || file.type === "application/pdf";
+      if (!ehPdf) {
+        const texto = await file.text();
+        const delim = texto.includes(";") ? ";" : ",";
+        const linhas = texto.split(/\r?\n/).filter((l) => l.trim());
+        return { linhas, delim, ehPdf: false };
+      }
+      const pdfjs = await this._carregarPdfJs();
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjs.getDocument({ data: new Uint8Array(buf) }).promise;
+      const linhas = [];
+      for (let n = 1; n <= pdf.numPages; n++) {
+        const page = await pdf.getPage(n);
+        const content = await page.getTextContent();
+        const porLinha = new Map(); // chave = coordenada Y arredondada (com tolerância)
+        for (const item of content.items) {
+          const str = item.str || "";
+          if (!str.trim()) continue;
+          const y = Math.round(item.transform[5]);
+          let chave = null;
+          for (const k of porLinha.keys()) { if (Math.abs(k - y) <= 2) { chave = k; break; } }
+          if (chave === null) { chave = y; porLinha.set(chave, []); }
+          porLinha.get(chave).push(item);
+        }
+        const chaves = [...porLinha.keys()].sort((a, b) => b - a); // topo → base
+        for (const k of chaves) {
+          const txt = porLinha.get(k)
+            .sort((a, b) => a.transform[4] - b.transform[4]) // esquerda → direita
+            .map((i) => i.str).join(" ").replace(/\s+/g, " ").trim();
+          if (txt) linhas.push(txt);
+        }
+      }
+      return { linhas, delim: null, ehPdf: true };
+    },
+
+    // Quebra uma linha em campos [data, descrição, valor]. CSV: split pelo delimitador
+    // (comportamento antigo, intacto). PDF: uma linha é texto solto, então acha data e
+    // valor por regex e devolve no mesmo formato de 3 campos que o resto do código espera.
+    _camposDaLinha(linha, delim, ehPdf, anoFallback) {
+      if (!ehPdf) return linha.split(delim).map((c) => c.trim());
+
+      const dataM = linha.match(/\b\d{2}\/\d{2}(?:\/\d{2,4})?\b/);
+      if (!dataM) return [];
+      let data = dataM[0];
+      const partes = data.split("/"); // normaliza pra dd/mm/aaaa
+      if (partes.length === 2) data = `${partes[0]}/${partes[1]}/${anoFallback}`;
+      else if (partes[2].length === 2) data = `${partes[0]}/${partes[1]}/20${partes[2]}`;
+
+      // valores no formato pt-BR (1.234,56 / 45,90); pega o último da linha (coluna de valor)
+      const valores = linha.match(/-?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*-?/g);
+      if (!valores || !valores.length) return [];
+      const valorBruto = valores[valores.length - 1].trim();
+      const valorNum = valorBruto.replace(/[^\d.,]/g, "");
+      // sinal: "-", parênteses, ou marcador D (débito) / C (crédito) logo após o valor
+      let negativo = /-/.test(valorBruto) || /\(\s*[\d.,]+\s*\)/.test(linha);
+      const resto = linha.slice(linha.lastIndexOf(valorBruto) + valorBruto.length).trim();
+      if (/^D\b/i.test(resto)) negativo = true;
+      if (/^C\b/i.test(resto)) negativo = false;
+      const valorStr = (negativo ? "-" : "") + valorNum;
+
+      let descricao = linha
+        .replace(dataM[0], " ")
+        .replace(valorBruto, " ")
+        .replace(/\bR\$/gi, " ")
+        .replace(/\(\s*\)/g, " ")   // parênteses vazios que sobraram do valor
+        .replace(/\s+[DC]\s*$/i, " ") // marcador débito/crédito solto no fim
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!descricao) descricao = "Lançamento importado";
+      return [data, descricao, valorStr];
+    },
+
+    // ===================== IMPORTAR CSV/PDF (concilia contas fixas + cria lançamentos) =====================
 
     abrirImportarCsv() {
       this.$refs.inputCsv.click();
@@ -493,18 +594,18 @@ Alpine.data("appState", () => ({
     async importarCsv(event) {
       const file = event.target.files[0];
       if (!file) return;
+      this.processandoArquivo = true;
       try {
-        const texto = await file.text();
-        const delim = texto.includes(";") ? ";" : ",";
-        const linhasTexto = texto.split(/\r?\n/).filter((l) => l.trim());
-        const inicioIdx = linhasTexto.findIndex((l) => /data/i.test(l) && /(valor|descri)/i.test(l));
-        const linhasDados = inicioIdx >= 0 ? linhasTexto.slice(inicioIdx + 1) : linhasTexto;
+        const anoMes = this.mesFinanceiro.slice(0, 4);
+        const { linhas, delim, ehPdf } = await this._lerArquivoFinanceiro(file);
+        const inicioIdx = linhas.findIndex((l) => /data/i.test(l) && /(valor|descri)/i.test(l));
+        const linhasDados = inicioIdx >= 0 ? linhas.slice(inicioIdx + 1) : linhas;
 
         let contasMarcadas = 0;
         let novosLancamentos = 0;
 
         for (const linha of linhasDados) {
-          const campos = linha.split(delim).map((c) => c.trim());
+          const campos = this._camposDaLinha(linha, delim, ehPdf, anoMes);
           if (campos.length < 3) continue;
           const dataMatch = campos.find((c) => /^\d{2}\/\d{2}\/\d{4}$/.test(c));
           if (!dataMatch) continue;
@@ -563,6 +664,7 @@ Alpine.data("appState", () => ({
       } catch (e) {
         alert("Erro ao importar: " + e.message);
       } finally {
+        this.processandoArquivo = false;
         event.target.value = "";
       }
     },

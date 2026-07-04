@@ -314,8 +314,8 @@
             <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
               <h2 class="text-sm font-semibold text-gray-700">📄 Contas fixas</h2>
               <div class="flex items-center gap-2">
-                <input type="file" accept=".csv,.txt" class="hidden" x-ref="inputCsv" @change="importarCsv($event)" />
-                <button @click="abrirImportarCsv" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">📥 Importar CSV</button>
+                <input type="file" accept=".csv,.txt,.pdf,application/pdf" class="hidden" x-ref="inputCsv" @change="importarCsv($event)" />
+                <button @click="abrirImportarCsv" :disabled="processandoArquivo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40" x-text="processandoArquivo ? '⏳ Lendo…' : '📥 Importar CSV/PDF'"></button>
                 <button @click="abrirNovaContaFixa" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
               </div>
             </div>
@@ -488,8 +488,8 @@
                       <option :value="c.id" x-text="c.nome"></option>
                     </template>
                   </select>
-                  <input type="file" accept=".csv,.txt" class="hidden" x-ref="inputConferenciaCartao" @change="processarConferenciaCartao($event)" />
-                  <button @click="abrirConferenciaCartao" :disabled="!cartaoConferenciaId" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">📥 Subir CSV da fatura</button>
+                  <input type="file" accept=".csv,.txt,.pdf,application/pdf" class="hidden" x-ref="inputConferenciaCartao" @change="processarConferenciaCartao($event)" />
+                  <button @click="abrirConferenciaCartao" :disabled="!cartaoConferenciaId || processandoArquivo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40" x-text="processandoArquivo ? '⏳ Lendo…' : '📥 Subir CSV/PDF da fatura'"></button>
                 </div>
                 <div x-show="resultadoConferencia" class="mt-3 text-xs">
                   <p class="text-gray-600 mb-2" x-text="resultadoConferencia ? (resultadoConferencia.cartao + ': ' + resultadoConferencia.encontrados + ' de ' + resultadoConferencia.total + ' lançamento(s) já estão no Dia a Dia.') : ''"></p>
