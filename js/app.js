@@ -70,6 +70,8 @@ Alpine.data("appState", () => ({
     importandoCsv: false,
     processandoArquivo: false, // spinner enquanto lê CSV/PDF (PDF demora um instante)
     resultadoImportacao: null,
+    alvoImportacaoFixos: "", // "cartao:<id>" ou "conta:<fixed_bill_id>" — pra onde vai o valor lido
+    resultadoImportacaoValor: null,
     _pdfjs: null, // pdf.js carregado sob demanda (só quando sobe um PDF)
 
     // cartões da família (fatura mensal editável, dentro de Contas Fixas)
@@ -638,6 +640,126 @@ Alpine.data("appState", () => ({
         .trim();
       if (!descricao) descricao = "Lançamento importado";
       return [data, descricao, valorStr];
+    },
+
+    // Lê o extrato/fatura e devolve o TOTAL: prioriza uma linha "Total a pagar/da fatura"
+    // impressa no documento; se não houver, soma os lançamentos lidos.
+    async _lerTotalDocumento(file) {
+      const anoMes = this.mesFinanceiro.slice(0, 4);
+      const { linhas, delim, ehPdf } = await this._lerArquivoFinanceiro(file);
+      const inicioIdx = linhas.findIndex((l) => /data/i.test(l) && /(valor|descri|estabelec)/i.test(l));
+      const linhasDados = inicioIdx >= 0 ? linhas.slice(inicioIdx + 1) : linhas;
+
+      const itens = [];
+      for (const linha of linhasDados) {
+        const campos = this._camposDaLinha(linha, delim, ehPdf, anoMes);
+        if (campos.length < 2) continue;
+        const dataMatch = campos.find((c) => /^\d{2}\/\d{2}\/\d{4}$/.test(c) || /^\d{2}\/\d{2}$/.test(c));
+        if (!dataMatch) continue;
+        const valorStr = [...campos].reverse().find((c) => /^-?[\d.,]+$/.test(c) && c.replace(/[.,]/g, "").length > 0);
+        if (!valorStr) continue;
+        const valor = Math.abs(parseFloat(valorStr.replace(/\./g, "").replace(",", ".")));
+        if (isNaN(valor) || valor === 0) continue;
+        itens.push(valor);
+      }
+
+      let total = itens.reduce((s, v) => s + v, 0);
+      let origem = "soma dos lançamentos";
+      // Ignora linhas de fatura ANTERIOR, parcelamento, financiamento, pagamento mínimo e
+      // projeções de próximas faturas — são a principal fonte de "valor errado". Ex.: o Itaú
+      // lista várias "Total a pagar" de opções de parcelamento (valores inflados) e o total
+      // real da fatura é a linha "Total desta fatura". Por isso a ordem abaixo prioriza ela.
+      const excluir = /(anterior|financiad|m[ií]nim|parcel|saque|pr[óo]xim|op[çc][aã]|encargo)/i;
+      const padroesTotal = [
+        /total\s+desta\s+fatura/i,
+        /o\s+total\s+da\s+sua\s+fatura/i,
+        /total\s+da\s+fatura\b/i,
+        /valor\s+total\s+a\s+pagar/i,
+        /total\s+a\s+pagar/i,
+        /valor\s+a\s+pagar/i,
+        /valor\s+do\s+documento/i,
+        /saldo\s+desta\s+fatura/i,
+        /pagamento\s+total/i,
+      ];
+      for (const rx of padroesTotal) {
+        const linha = linhas.find((l) => rx.test(l) && !excluir.test(l));
+        if (!linha) continue;
+        const m = linha.match(/-?\s*\d{1,3}(?:\.\d{3})*,\d{2}/g);
+        if (m && m.length) {
+          const v = Math.abs(parseFloat(m[m.length - 1].replace(/\s/g, "").replace(/\./g, "").replace(",", ".")));
+          if (!isNaN(v) && v > 0) { total = v; origem = "total informado na fatura"; break; }
+        }
+      }
+      return { total: Math.round(total * 100) / 100, origem, qtdItens: itens.length };
+    },
+
+    // ===================== IMPORTAR VALOR (Compromissos fixos: cartão OU conta) =====================
+    // Você escolhe o cartão/conta no seletor e sobe o extrato/fatura (CSV/PDF). O app lê o
+    // total e grava no valor daquele item no mês atual. Subir de novo só regrava — sem duplicar.
+
+    abrirImportarValorFixos() {
+      if (!this.alvoImportacaoFixos) { alert("Primeiro escolha o cartão ou a conta no seletor, depois suba o arquivo."); return; }
+      this.$refs.inputValorFixos.click();
+    },
+
+    async importarValorFixos(event) {
+      const file = event.target.files[0];
+      if (!file || !this.alvoImportacaoFixos) { if (event.target) event.target.value = ""; return; }
+      this.processandoArquivo = true;
+      try {
+        const { total, origem, qtdItens } = await this._lerTotalDocumento(file);
+        if (!total || total <= 0) throw new Error("não encontrei valores no arquivo. Confira se subiu o extrato/fatura certo (CSV ou PDF).");
+
+        const sep = this.alvoImportacaoFixos.indexOf(":");
+        const tipo = this.alvoImportacaoFixos.slice(0, sep);
+        const id = this.alvoImportacaoFixos.slice(sep + 1);
+        let nome = "", valorAnterior = 0;
+
+        if (tipo === "cartao") {
+          let fatura = this.faturasCartao.find((f) => f.cartao_id === id && f.competencia === this.mesFinanceiro);
+          if (!fatura) {
+            await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
+            fatura = this.faturasCartao.find((f) => f.cartao_id === id && f.competencia === this.mesFinanceiro);
+          }
+          if (fatura) {
+            valorAnterior = Number(fatura.amount || 0);
+            const { error } = await supabase.from("faturas_cartao").update({ amount: total }).eq("id", fatura.id);
+            if (error) throw new Error(error.message);
+            fatura.amount = total;
+          } else {
+            const cartao = this.cartoes.find((c) => c.id === id);
+            const mesVenc = this.mesSeguinte(this.mesFinanceiro);
+            const [anoV, mesNumV] = mesVenc.split("-").map(Number);
+            const ultimoDia = new Date(anoV, mesNumV, 0).getDate();
+            const dia = Math.min(cartao?.dia_vencimento || 10, ultimoDia);
+            const nova = { cartao_id: id, competencia: this.mesFinanceiro, due_date: `${mesVenc}-${String(dia).padStart(2, "0")}`, amount: total, status: "pendente" };
+            const { data, error } = await supabase.from("faturas_cartao").insert(nova).select().single();
+            if (error) throw new Error(error.message);
+            this.faturasCartao.push(data);
+          }
+          nome = this.cartaoNome(id);
+        } else {
+          // conta fixa: grava o valor no pagamento desse mês (cria se faltar)
+          let pag = this.billPayments.find((p) => p.fixed_bill_id === id && (p.competencia || p.due_date.slice(0, 7)) === this.mesFinanceiro);
+          if (!pag) {
+            await this.garantirContasFixasDoMes(this.mesFinanceiro);
+            pag = this.billPayments.find((p) => p.fixed_bill_id === id && (p.competencia || p.due_date.slice(0, 7)) === this.mesFinanceiro);
+          }
+          if (!pag) throw new Error("essa conta não tem lançamento neste mês.");
+          valorAnterior = Number(pag.amount || 0);
+          const { error } = await supabase.from("bill_payments").update({ amount: total }).eq("id", pag.id);
+          if (error) throw new Error(error.message);
+          pag.amount = total;
+          nome = this.billName(id);
+        }
+
+        this.resultadoImportacaoValor = { nome, tipo, valor: total, valorAnterior, origem, qtdItens };
+      } catch (e) {
+        alert("Erro ao importar: " + e.message);
+      } finally {
+        this.processandoArquivo = false;
+        if (event.target) event.target.value = "";
+      }
     },
 
     // ===================== IMPORTAR CSV/PDF (concilia contas fixas + cria lançamentos) =====================

@@ -238,14 +238,20 @@
           <section class="bg-white rounded-2xl shadow-sm p-4">
             <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
               <h2 class="text-sm font-semibold text-gray-700">📄 Contas fixas</h2>
-              <div class="flex items-center gap-2">
-                <input type="file" accept=".csv,.txt,.pdf,application/pdf" class="hidden" x-ref="inputCsv" @change="importarCsv($event)" />
-                <button @click="abrirImportarCsv" :disabled="processandoArquivo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40" x-text="processandoArquivo ? '⏳ Lendo…' : '📥 Importar CSV/PDF'"></button>
+              <div class="flex items-center gap-2 flex-wrap justify-end">
+                <select x-model="alvoImportacaoFixos" class="rounded-lg border border-gray-200 px-2 py-1.5 text-xs max-w-[55%]">
+                  <option value="">Atualizar valor de…</option>
+                  <template x-for="c in cartoes" :key="'c'+c.id"><option :value="'cartao:'+c.id" x-text="'💳 ' + c.nome"></option></template>
+                  <template x-for="b in fixedBills.filter(b => b.active !== false)" :key="'b'+b.id"><option :value="'conta:'+b.id" x-text="'📄 ' + b.name"></option></template>
+                </select>
+                <input type="file" accept=".csv,.txt,.pdf,application/pdf" class="hidden" x-ref="inputValorFixos" @change="importarValorFixos($event)" />
+                <button @click="abrirImportarValorFixos" :disabled="!alvoImportacaoFixos || processandoArquivo" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40" x-text="processandoArquivo ? '⏳ Lendo…' : '📥 Importar CSV/PDF'"></button>
                 <button @click="abrirNovaContaFixa" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
               </div>
             </div>
+            <p class="text-xs text-gray-500 mb-2">Pra atualizar um valor pela fatura/extrato: escolha o <b>cartão</b> ou a <b>conta</b> no seletor acima e suba o CSV/PDF do banco. O app lê o total e grava nesse item, no mês selecionado. Pode subir a mesma fatura várias vezes — ele só regrava, sem duplicar.</p>
             <p class="text-sm font-semibold text-gray-800 mb-3" x-text="'Total do mês (contas fixas + cartões): ' + fmtMoeda(totalContasFixasDoMes + totalFaturasCartaoDoMes)"></p>
-            <p x-show="resultadoImportacao" class="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 mb-3" x-text="resultadoImportacao ? (resultadoImportacao.contasMarcadas + ' conta(s) marcada(s) como paga(s), ' + resultadoImportacao.novosLancamentos + ' lançamento(s) novo(s) criado(s).') : ''"></p>
+            <p x-show="resultadoImportacaoValor" class="text-xs text-green-800 bg-green-50 rounded-lg px-3 py-2 mb-3" x-text="resultadoImportacaoValor ? ('✅ ' + resultadoImportacaoValor.nome + ': valor do mês atualizado para ' + fmtMoeda(resultadoImportacaoValor.valor) + (resultadoImportacaoValor.valorAnterior ? ' (antes: ' + fmtMoeda(resultadoImportacaoValor.valorAnterior) + ')' : '') + ' — ' + resultadoImportacaoValor.origem + '.') : ''"></p>
             <div class="divide-y">
               <template x-for="p in billPaymentsDoMes" :key="p.id">
                 <div class="flex items-center justify-between gap-2 py-3 flex-wrap">
