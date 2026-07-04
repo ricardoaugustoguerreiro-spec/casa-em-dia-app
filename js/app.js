@@ -468,6 +468,57 @@ Alpine.data("appState", () => ({
           lancamentosFatura.push({ data: dataISO, descricao, valor });
         }
 
+        // ----- TOTAL DA FATURA -----
+        // Prioriza uma linha "Total a pagar / Total da fatura" impressa no documento;
+        // se o banco não trouxer, cai pra soma dos lançamentos lidos.
+        let totalFatura = lancamentosFatura.reduce((s, l) => s + l.valor, 0);
+        let origemTotal = "soma dos lançamentos";
+        const padroesTotal = [
+          /total\s+a\s+pagar/i,
+          /(valor\s+)?total\s+d[ao]?\s*fatura/i,
+          /total\s+desta\s+fatura/i,
+          /saldo\s+(total|desta\s+fatura)/i,
+          /pagamento\s+total/i,
+        ];
+        for (const rx of padroesTotal) {
+          const linha = linhas.find((l) => rx.test(l));
+          if (!linha) continue;
+          const m = linha.match(/-?\s*\d{1,3}(?:\.\d{3})*,\d{2}/g);
+          if (m && m.length) {
+            const v = Math.abs(parseFloat(m[m.length - 1].replace(/\s/g, "").replace(/\./g, "").replace(",", ".")));
+            if (!isNaN(v) && v > 0) { totalFatura = v; origemTotal = "total informado na fatura"; break; }
+          }
+        }
+        totalFatura = Math.round(totalFatura * 100) / 100;
+
+        // ----- ATUALIZA O VALOR DO CARTÃO NAS CONTAS FIXAS -----
+        // Há uma única linha por cartão+competência (mês atual). Subir a mesma fatura
+        // de novo no mês só regrava o valor — nunca duplica.
+        let fatura = this.faturasCartao.find((f) => f.cartao_id === this.cartaoConferenciaId && f.competencia === this.mesFinanceiro);
+        if (!fatura) {
+          await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
+          fatura = this.faturasCartao.find((f) => f.cartao_id === this.cartaoConferenciaId && f.competencia === this.mesFinanceiro);
+        }
+        let valorAnterior = null;
+        if (fatura) {
+          valorAnterior = Number(fatura.amount || 0);
+          const { error } = await supabase.from("faturas_cartao").update({ amount: totalFatura }).eq("id", fatura.id);
+          if (error) throw new Error("não consegui gravar o valor da fatura: " + error.message);
+          fatura.amount = totalFatura;
+        } else {
+          // cartão inativo/sem fatura do mês: cria a fatura já com o valor lido
+          const cartao = this.cartoes.find((c) => c.id === this.cartaoConferenciaId);
+          const mesVenc = this.mesSeguinte(this.mesFinanceiro);
+          const [anoV, mesNumV] = mesVenc.split("-").map(Number);
+          const ultimoDia = new Date(anoV, mesNumV, 0).getDate();
+          const dia = Math.min(cartao?.dia_vencimento || 10, ultimoDia);
+          const nova = { cartao_id: this.cartaoConferenciaId, competencia: this.mesFinanceiro, due_date: `${mesVenc}-${String(dia).padStart(2, "0")}`, amount: totalFatura, status: "pendente" };
+          const { data, error } = await supabase.from("faturas_cartao").insert(nova).select().single();
+          if (error) throw new Error("não consegui criar a fatura: " + error.message);
+          this.faturasCartao.push(data);
+          valorAnterior = 0;
+        }
+
         const lancadosNoApp = this.diaADia.filter((d) => d.status === "realizado");
         const comparativo = lancamentosFatura.map((l) => {
           const match = lancadosNoApp.find((d) => Math.abs(Number(d.valor) - l.valor) < 0.01 && Math.abs(this.diffDias(d.data, l.data)) <= 3);
@@ -479,6 +530,10 @@ Alpine.data("appState", () => ({
           total: comparativo.length,
           encontrados: comparativo.filter((c) => c.encontrado).length,
           naoEncontrados: comparativo.filter((c) => !c.encontrado),
+          valorFatura: totalFatura,
+          valorAnterior,
+          origemTotal,
+          qtdItens: lancamentosFatura.length,
         };
       } catch (e) {
         alert("Erro ao ler o arquivo: " + e.message);
