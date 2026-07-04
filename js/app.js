@@ -673,13 +673,11 @@ Alpine.data("appState", () => ({
       return isNaN(n) ? null : n;
     },
 
-    // Lê o extrato/fatura e devolve o TOTAL. Em PDF de fatura, prioriza a linha
+    // Calcula o TOTAL a partir das linhas já lidas. Em PDF de fatura, prioriza a linha
     // "Total desta fatura" impressa; senão (e no CSV) soma os lançamentos COM SINAL
     // (compras somam, estornos subtraem), ignorando pagamento da fatura anterior.
-    async _lerTotalDocumento(file) {
+    _calcularTotalDoc(linhas, delim, ehPdf) {
       const anoMes = this.mesFinanceiro.slice(0, 4);
-      const { linhas, delim, ehPdf } = await this._lerArquivoFinanceiro(file);
-
       const ehData = (c) => /^\d{4}-\d{2}-\d{2}$/.test(c) || /^\d{2}\/\d{2}(\/\d{2,4})?$/.test(c);
 
       let total = 0;
@@ -730,6 +728,87 @@ Alpine.data("appState", () => ({
       return { total: Math.round(total * 100) / 100, origem, qtdItens };
     },
 
+    // soma n meses (n pode ser negativo) a um "AAAA-MM" e devolve "AAAA-MM"
+    _somarMeses(mes, n) {
+      const [y, m] = mes.split("-").map(Number);
+      const d = new Date(y, m - 1 + n, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    },
+
+    // chave normalizada da descrição, pra casar a mesma compra parcelada entre faturas
+    _normParcelaDesc(s) {
+      return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().slice(0, 22);
+    },
+
+    // Detecta compras PARCELADAS nas linhas do extrato/fatura. Reconhece "Parcela X/Y",
+    // "parc X/Y", "X de Y" (Nubank e afins) e o formato colado "descNN/NN valor" (Itaú).
+    // No PDF ancora na 1ª transação da linha (coluna esquerda), ignorando a 2ª coluna e a
+    // seção de detalhamento (juros/limite/IOF...). Dedup por descrição+total, guardando a
+    // MENOR parcela (a atual, não a projeção). Devolve {descricao, atual, total, valor}.
+    _detectarParcelas(linhas, delim, ehPdf) {
+      const RUIDO = /(juros|limite|financiad|saque|\bcet\b|\biof\b|anuidade|encargo|m[áa]xim|cr[ée]dito|total\s+financ|valor\s+total|valor\s+compra|valor\s+juros|quantidade\s+de\s+parcela|per[íi]odo|%\s)/i;
+      const achados = [];
+      for (const linha of linhas) {
+        let desc = null, atual = null, total = null, valor = null;
+        if (!ehPdf) {
+          const campos = this._csvCampos(linha, delim);
+          if (campos.length < 2) continue;
+          if (!campos.some((c) => /^\d{4}-\d{2}-\d{2}$/.test(c) || /^\d{2}\/\d{2}/.test(c))) continue;
+          for (let i = campos.length - 1; i >= 0; i--) { const v = this._parseValorBR(campos[i]); if (v !== null) { valor = v; break; } }
+          if (valor === null || valor === 0) continue;
+          const titulo = campos.find((c) => this._parseValorBR(c) === null && !/^\d{4}-\d{2}-\d{2}$/.test(c)) || "";
+          const m = titulo.match(/parcela\s+(\d{1,2})\s*\/\s*(\d{1,2})/i) || titulo.match(/parc\.?\s*(\d{1,2})\s*\/\s*(\d{1,2})/i) || titulo.match(/\b(\d{1,2})\s+de\s+(\d{1,2})\b/i) || titulo.match(/(?<!\d)(\d{1,2})\/(\d{1,2})(?!\d)/);
+          if (!m) continue;
+          atual = +m[1]; total = +m[2];
+          desc = titulo.replace(/\s*[-–]?\s*(parcela|parc\.?)\s*\d{1,2}\s*\/\s*\d{1,2}.*/i, "").replace(/\b\d{1,2}\s+de\s+\d{1,2}\b/i, "").replace(/(?<!\d)\d{1,2}\/\d{1,2}(?!\d)/, "").replace(/\s+/g, " ").trim();
+        } else {
+          const semData = linha.replace(/^\s*\d{2}\/\d{2}(\/\d{2,4})?\s*/, "");
+          const m = semData.match(/^(.+?)(\d{1,2})\/(\d{1,2})\s+(-?\s*\d{1,3}(?:\.\d{3})*,\d{2})/);
+          if (!m) continue;
+          desc = m[1].replace(/\s+/g, " ").trim();
+          atual = +m[2]; total = +m[3]; valor = this._parseValorBR(m[4]);
+          if (RUIDO.test(desc)) continue;
+        }
+        if (!desc || valor === null || valor === 0) continue;
+        valor = Math.abs(valor);
+        if (!(total >= 2 && total <= 48 && atual >= 1 && atual <= total)) continue;
+        achados.push({ descricao: desc, atual, total, valor });
+      }
+      const map = new Map();
+      for (const a of achados) {
+        const k = this._normParcelaDesc(a.descricao) + "|" + a.total;
+        const ex = map.get(k);
+        if (!ex || a.atual < ex.atual) map.set(k, a);
+      }
+      return [...map.values()];
+    },
+
+    // Grava/atualiza na aba Parceladas as compras parceladas lidas do documento. Calcula
+    // 1ª e última parcela a partir da parcela atual + mês da fatura; casa com registro
+    // existente (mesma descrição+total) pra não duplicar ao re-subir. Devolve contagens.
+    async _sincronizarParcelas(parcelas, cartaoNome) {
+      let novas = 0, atualizadas = 0;
+      for (const p of parcelas) {
+        const inicio = this._somarMeses(this.mesFinanceiro, -(p.atual - 1)) + "-01";
+        const fim = this._somarMeses(this.mesFinanceiro, p.total - p.atual) + "-01";
+        const chave = this._normParcelaDesc(p.descricao);
+        const existente = this.comprasParceladas.find((c) => {
+          const t = this.diffMeses(c.parcela_inicio.slice(0, 7), c.parcela_fim.slice(0, 7)) + 1;
+          return this._normParcelaDesc(c.descricao) === chave && t === p.total;
+        });
+        if (existente) {
+          const payload = { valor_parcela: p.valor, parcela_inicio: inicio, parcela_fim: fim };
+          const { error } = await supabase.from("compras_parceladas").update(payload).eq("id", existente.id);
+          if (!error) { Object.assign(existente, payload); atualizadas++; }
+        } else {
+          const nova = { descricao: p.descricao, cartao: cartaoNome || null, valor_parcela: p.valor, parcela_inicio: inicio, parcela_fim: fim, created_by: this.uid };
+          const { data, error } = await supabase.from("compras_parceladas").insert(nova).select().single();
+          if (!error && data) { this.comprasParceladas.push(data); novas++; }
+        }
+      }
+      return { novas, atualizadas };
+    },
+
     // ===================== IMPORTAR VALOR (Compromissos fixos: cartão OU conta) =====================
     // Você escolhe o cartão/conta no seletor e sobe o extrato/fatura (CSV/PDF). O app lê o
     // total e grava no valor daquele item no mês atual. Subir de novo só regrava — sem duplicar.
@@ -744,7 +823,8 @@ Alpine.data("appState", () => ({
       if (!file || !this.alvoImportacaoFixos) { if (event.target) event.target.value = ""; return; }
       this.processandoArquivo = true;
       try {
-        const { total, origem, qtdItens } = await this._lerTotalDocumento(file);
+        const { linhas, delim, ehPdf } = await this._lerArquivoFinanceiro(file);
+        const { total, origem, qtdItens } = this._calcularTotalDoc(linhas, delim, ehPdf);
         if (!total || total <= 0) throw new Error("não encontrei valores no arquivo. Confira se subiu o extrato/fatura certo (CSV ou PDF).");
 
         const sep = this.alvoImportacaoFixos.indexOf(":");
@@ -790,7 +870,11 @@ Alpine.data("appState", () => ({
           nome = this.billName(id);
         }
 
-        this.resultadoImportacaoValor = { nome, tipo, valor: total, valorAnterior, origem, qtdItens };
+        // separa o que está parcelado e joga na aba Parceladas (sem duplicar ao re-subir)
+        const parcelas = this._detectarParcelas(linhas, delim, ehPdf);
+        const { novas, atualizadas } = await this._sincronizarParcelas(parcelas, tipo === "cartao" ? nome : null);
+
+        this.resultadoImportacaoValor = { nome, tipo, valor: total, valorAnterior, origem, qtdItens, parcelasDetectadas: parcelas.length, parcelasNovas: novas, parcelasAtualizadas: atualizadas };
       } catch (e) {
         alert("Erro ao importar: " + e.message);
       } finally {

@@ -251,7 +251,10 @@
             </div>
             <p class="text-xs text-gray-500 mb-2">Pra atualizar um valor pela fatura/extrato: escolha o <b>cartão</b> ou a <b>conta</b> no seletor acima e suba o CSV/PDF do banco. O app lê o total e grava nesse item, no mês selecionado. Pode subir a mesma fatura várias vezes — ele só regrava, sem duplicar.</p>
             <p class="text-sm font-semibold text-gray-800 mb-3" x-text="'Total do mês (contas fixas + cartões): ' + fmtMoeda(totalContasFixasDoMes + totalFaturasCartaoDoMes)"></p>
-            <p x-show="resultadoImportacaoValor" class="text-xs text-green-800 bg-green-50 rounded-lg px-3 py-2 mb-3" x-text="resultadoImportacaoValor ? ('✅ ' + resultadoImportacaoValor.nome + ': valor do mês atualizado para ' + fmtMoeda(resultadoImportacaoValor.valor) + (resultadoImportacaoValor.valorAnterior ? ' (antes: ' + fmtMoeda(resultadoImportacaoValor.valorAnterior) + ')' : '') + ' — ' + resultadoImportacaoValor.origem + '.') : ''"></p>
+            <div x-show="resultadoImportacaoValor" class="text-xs bg-green-50 rounded-lg px-3 py-2 mb-3 space-y-1">
+              <p class="text-green-800" x-text="resultadoImportacaoValor ? ('✅ ' + resultadoImportacaoValor.nome + ': valor do mês atualizado para ' + fmtMoeda(resultadoImportacaoValor.valor) + (resultadoImportacaoValor.valorAnterior ? ' (antes: ' + fmtMoeda(resultadoImportacaoValor.valorAnterior) + ')' : '') + ' — ' + resultadoImportacaoValor.origem + '.') : ''"></p>
+              <p x-show="resultadoImportacaoValor && resultadoImportacaoValor.parcelasDetectadas > 0" class="text-indigo-700" x-text="resultadoImportacaoValor ? ('🧾 ' + resultadoImportacaoValor.parcelasDetectadas + ' compra(s) parcelada(s) na aba Parceladas' + (resultadoImportacaoValor.parcelasNovas ? ' · ' + resultadoImportacaoValor.parcelasNovas + ' nova(s)' : '') + (resultadoImportacaoValor.parcelasAtualizadas ? ' · ' + resultadoImportacaoValor.parcelasAtualizadas + ' atualizada(s)' : '') + '. Confira e apague as que não fizerem sentido.') : ''"></p>
+            </div>
             <div class="divide-y">
               <template x-for="p in billPaymentsDoMes" :key="p.id">
                 <div class="flex items-center justify-between gap-2 py-3 flex-wrap">
@@ -411,7 +414,7 @@
                       <span x-text="c.descricao"></span>
                       <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? 'ativa' : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
                     </p>
-                    <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + fmtData(c.parcela_inicio) + ' a ' + fmtData(c.parcela_fim) + ' · ' + c.pagas + '/' + c.totalParcelas + ' paga(s)' + (c.restantes > 0 ? ' · ' + c.restantes + ' restante(s)' : '')"></p>
+                    <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.pagas + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · quitada'))) + ' · ' + fmtMoeda(c.valor_parcela) + '/mês'"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <p class="font-medium" x-text="fmtMoeda(c.valor_parcela)"></p>
