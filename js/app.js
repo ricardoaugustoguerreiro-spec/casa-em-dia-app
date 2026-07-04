@@ -740,6 +740,31 @@ Alpine.data("appState", () => ({
       return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().slice(0, 22);
     },
 
+    // Descobre a COMPETÊNCIA do documento (mês em que o valor deve entrar, independente do
+    // mês que você está vendo). Usa o VENCIMENTO impresso: competência = mês anterior ao
+    // vencimento (a fatura vence no mês seguinte à competência — mesma regra das contas
+    // fixas). Sem vencimento no arquivo (ex.: CSV Nubank), usa o mês do lançamento mais
+    // recente (datas ISO do CSV são confiáveis). Devolve "AAAA-MM".
+    _detectarCompetencia(linhas, delim, ehPdf) {
+      for (const linha of linhas) {
+        const idx = linha.search(/venciment/i);
+        if (idx < 0) continue;
+        const m = linha.slice(idx).match(/(\d{2})\/(\d{2})\/(\d{2,4})/);
+        if (m) {
+          const ano = m[3].length === 2 ? "20" + m[3] : m[3];
+          return this._somarMeses(`${ano}-${m[2]}`, -1);
+        }
+      }
+      let maxMes = null;
+      for (const linha of linhas) {
+        const campos = ehPdf ? [] : this._csvCampos(linha, delim);
+        for (const c of campos) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(c)) { const mes = c.slice(0, 7); if (!maxMes || mes > maxMes) maxMes = mes; }
+        }
+      }
+      return maxMes || this.mesFinanceiro;
+    },
+
     // Detecta compras PARCELADAS nas linhas do extrato/fatura. Reconhece "Parcela X/Y",
     // "parc X/Y", "X de Y" (Nubank e afins) e o formato colado "descNN/NN valor" (Itaú).
     // No PDF ancora na 1ª transação da linha (coluna esquerda), ignorando a 2ª coluna e a
@@ -786,11 +811,11 @@ Alpine.data("appState", () => ({
     // Grava/atualiza na aba Parceladas as compras parceladas lidas do documento. Calcula
     // 1ª e última parcela a partir da parcela atual + mês da fatura; casa com registro
     // existente (mesma descrição+total) pra não duplicar ao re-subir. Devolve contagens.
-    async _sincronizarParcelas(parcelas, cartaoNome) {
+    async _sincronizarParcelas(parcelas, cartaoNome, mesCompetencia) {
       let novas = 0, atualizadas = 0;
       for (const p of parcelas) {
-        const inicio = this._somarMeses(this.mesFinanceiro, -(p.atual - 1)) + "-01";
-        const fim = this._somarMeses(this.mesFinanceiro, p.total - p.atual) + "-01";
+        const inicio = this._somarMeses(mesCompetencia, -(p.atual - 1)) + "-01";
+        const fim = this._somarMeses(mesCompetencia, p.total - p.atual) + "-01";
         const chave = this._normParcelaDesc(p.descricao);
         const existente = this.comprasParceladas.find((c) => {
           const t = this.diffMeses(c.parcela_inicio.slice(0, 7), c.parcela_fim.slice(0, 7)) + 1;
@@ -827,16 +852,20 @@ Alpine.data("appState", () => ({
         const { total, origem, qtdItens } = this._calcularTotalDoc(linhas, delim, ehPdf);
         if (!total || total <= 0) throw new Error("não encontrei valores no arquivo. Confira se subiu o extrato/fatura certo (CSV ou PDF).");
 
+        // competência = mês em que o valor entra (lido do documento), independente do mês
+        // que você está vendo. Regra: fatura vence no mês seguinte à competência.
+        const competencia = this._detectarCompetencia(linhas, delim, ehPdf);
+
         const sep = this.alvoImportacaoFixos.indexOf(":");
         const tipo = this.alvoImportacaoFixos.slice(0, sep);
         const id = this.alvoImportacaoFixos.slice(sep + 1);
         let nome = "", valorAnterior = 0;
 
         if (tipo === "cartao") {
-          let fatura = this.faturasCartao.find((f) => f.cartao_id === id && f.competencia === this.mesFinanceiro);
+          let fatura = this.faturasCartao.find((f) => f.cartao_id === id && f.competencia === competencia);
           if (!fatura) {
-            await this.garantirFaturasCartaoDoMes(this.mesFinanceiro);
-            fatura = this.faturasCartao.find((f) => f.cartao_id === id && f.competencia === this.mesFinanceiro);
+            await this.garantirFaturasCartaoDoMes(competencia);
+            fatura = this.faturasCartao.find((f) => f.cartao_id === id && f.competencia === competencia);
           }
           if (fatura) {
             valorAnterior = Number(fatura.amount || 0);
@@ -845,24 +874,24 @@ Alpine.data("appState", () => ({
             fatura.amount = total;
           } else {
             const cartao = this.cartoes.find((c) => c.id === id);
-            const mesVenc = this.mesSeguinte(this.mesFinanceiro);
+            const mesVenc = this.mesSeguinte(competencia);
             const [anoV, mesNumV] = mesVenc.split("-").map(Number);
             const ultimoDia = new Date(anoV, mesNumV, 0).getDate();
             const dia = Math.min(cartao?.dia_vencimento || 10, ultimoDia);
-            const nova = { cartao_id: id, competencia: this.mesFinanceiro, due_date: `${mesVenc}-${String(dia).padStart(2, "0")}`, amount: total, status: "pendente" };
+            const nova = { cartao_id: id, competencia, due_date: `${mesVenc}-${String(dia).padStart(2, "0")}`, amount: total, status: "pendente" };
             const { data, error } = await supabase.from("faturas_cartao").insert(nova).select().single();
             if (error) throw new Error(error.message);
             this.faturasCartao.push(data);
           }
           nome = this.cartaoNome(id);
         } else {
-          // conta fixa: grava o valor no pagamento desse mês (cria se faltar)
-          let pag = this.billPayments.find((p) => p.fixed_bill_id === id && (p.competencia || p.due_date.slice(0, 7)) === this.mesFinanceiro);
+          // conta fixa: grava o valor no pagamento da competência (cria se faltar)
+          let pag = this.billPayments.find((p) => p.fixed_bill_id === id && (p.competencia || p.due_date.slice(0, 7)) === competencia);
           if (!pag) {
-            await this.garantirContasFixasDoMes(this.mesFinanceiro);
-            pag = this.billPayments.find((p) => p.fixed_bill_id === id && (p.competencia || p.due_date.slice(0, 7)) === this.mesFinanceiro);
+            await this.garantirContasFixasDoMes(competencia);
+            pag = this.billPayments.find((p) => p.fixed_bill_id === id && (p.competencia || p.due_date.slice(0, 7)) === competencia);
           }
-          if (!pag) throw new Error("essa conta não tem lançamento neste mês.");
+          if (!pag) throw new Error("essa conta não tem lançamento na competência " + this.nomeMes(competencia) + ".");
           valorAnterior = Number(pag.amount || 0);
           const { error } = await supabase.from("bill_payments").update({ amount: total }).eq("id", pag.id);
           if (error) throw new Error(error.message);
@@ -870,11 +899,12 @@ Alpine.data("appState", () => ({
           nome = this.billName(id);
         }
 
-        // separa o que está parcelado e joga na aba Parceladas (sem duplicar ao re-subir)
+        // separa o que está parcelado e joga na aba Parceladas (sem duplicar ao re-subir),
+        // usando a MESMA competência detectada pra calcular 1ª/última parcela.
         const parcelas = this._detectarParcelas(linhas, delim, ehPdf);
-        const { novas, atualizadas } = await this._sincronizarParcelas(parcelas, tipo === "cartao" ? nome : null);
+        const { novas, atualizadas } = await this._sincronizarParcelas(parcelas, tipo === "cartao" ? nome : null, competencia);
 
-        this.resultadoImportacaoValor = { nome, tipo, valor: total, valorAnterior, origem, qtdItens, parcelasDetectadas: parcelas.length, parcelasNovas: novas, parcelasAtualizadas: atualizadas };
+        this.resultadoImportacaoValor = { nome, tipo, valor: total, valorAnterior, origem, qtdItens, competencia, nomeCompetencia: this.nomeMes(competencia), parcelasDetectadas: parcelas.length, parcelasNovas: novas, parcelasAtualizadas: atualizadas };
       } catch (e) {
         alert("Erro ao importar: " + e.message);
       } finally {
@@ -1395,7 +1425,11 @@ Alpine.data("appState", () => ({
     },
 
     get nomeMesFinanceiro() {
-      const [y, m] = this.mesFinanceiro.split("-").map(Number);
+      return this.nomeMes(this.mesFinanceiro);
+    },
+
+    nomeMes(mesISO) {
+      const [y, m] = mesISO.split("-").map(Number);
       return `${this.nomesMeses[m - 1]} de ${y}`;
     },
 
