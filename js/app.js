@@ -642,28 +642,65 @@ Alpine.data("appState", () => ({
       return [data, descricao, valorStr];
     },
 
-    // Lê o extrato/fatura e devolve o TOTAL: prioriza uma linha "Total a pagar/da fatura"
-    // impressa no documento; se não houver, soma os lançamentos lidos.
+    // Split de linha CSV respeitando aspas — o Nubank (e outros) exporta o valor entre
+    // aspas ("7,00") justamente porque a vírgula decimal colidiria com o separador. Sem
+    // isso, "7,00" virava dois campos e o valor se perdia.
+    _csvCampos(linha, delim) {
+      const out = [];
+      let cur = "", emAspas = false;
+      for (let i = 0; i < linha.length; i++) {
+        const ch = linha[i];
+        if (ch === '"') {
+          if (emAspas && linha[i + 1] === '"') { cur += '"'; i++; }
+          else emAspas = !emAspas;
+        } else if (ch === delim && !emAspas) {
+          out.push(cur); cur = "";
+        } else {
+          cur += ch;
+        }
+      }
+      out.push(cur);
+      return out.map((c) => c.trim());
+    },
+
+    // Interpreta um número em formato pt-BR (1.234,56 / 45,90 / "- 169,74"), tolerando
+    // aspas, espaços e R$. Devolve número COM sinal, ou null se o campo não for um valor.
+    _parseValorBR(str) {
+      if (str == null) return null;
+      const s = String(str).trim().replace(/^"+|"+$/g, "").replace(/R\$/i, "").replace(/\s+/g, "");
+      if (!/^-?\d{1,3}(\.\d{3})*(,\d{1,2})?$|^-?\d+(,\d{1,2})?$/.test(s)) return null;
+      const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
+      return isNaN(n) ? null : n;
+    },
+
+    // Lê o extrato/fatura e devolve o TOTAL. Em PDF de fatura, prioriza a linha
+    // "Total desta fatura" impressa; senão (e no CSV) soma os lançamentos COM SINAL
+    // (compras somam, estornos subtraem), ignorando pagamento da fatura anterior.
     async _lerTotalDocumento(file) {
       const anoMes = this.mesFinanceiro.slice(0, 4);
       const { linhas, delim, ehPdf } = await this._lerArquivoFinanceiro(file);
-      const inicioIdx = linhas.findIndex((l) => /data/i.test(l) && /(valor|descri|estabelec)/i.test(l));
-      const linhasDados = inicioIdx >= 0 ? linhas.slice(inicioIdx + 1) : linhas;
 
-      const itens = [];
-      for (const linha of linhasDados) {
-        const campos = this._camposDaLinha(linha, delim, ehPdf, anoMes);
-        if (campos.length < 2) continue;
-        const dataMatch = campos.find((c) => /^\d{2}\/\d{2}\/\d{4}$/.test(c) || /^\d{2}\/\d{2}$/.test(c));
-        if (!dataMatch) continue;
-        const valorStr = [...campos].reverse().find((c) => /^-?[\d.,]+$/.test(c) && c.replace(/[.,]/g, "").length > 0);
-        if (!valorStr) continue;
-        const valor = Math.abs(parseFloat(valorStr.replace(/\./g, "").replace(",", ".")));
-        if (isNaN(valor) || valor === 0) continue;
-        itens.push(valor);
+      const ehData = (c) => /^\d{4}-\d{2}-\d{2}$/.test(c) || /^\d{2}\/\d{2}(\/\d{2,4})?$/.test(c);
+
+      let total = 0;
+      let qtdItens = 0;
+      for (const linha of linhas) {
+        const campos = ehPdf ? this._camposDaLinha(linha, delim, ehPdf, anoMes) : this._csvCampos(linha, delim);
+        if (!campos.length) continue;
+        if (!campos.some((c) => ehData(c))) continue; // só linhas de lançamento (têm data)
+        // pagamento da fatura anterior não é gasto DESTA fatura — não entra no total
+        const txt = campos.join(" ").toLowerCase();
+        if (/pagamento\s+(recebido|efetuado|de\s+fatura|da\s+fatura)/.test(txt)) continue;
+        let valor = null;
+        for (let i = campos.length - 1; i >= 0; i--) {
+          const v = this._parseValorBR(campos[i]);
+          if (v !== null) { valor = v; break; }
+        }
+        if (valor === null || valor === 0) continue;
+        total += valor;
+        qtdItens++;
       }
 
-      let total = itens.reduce((s, v) => s + v, 0);
       let origem = "soma dos lançamentos";
       // Ignora linhas de fatura ANTERIOR, parcelamento, financiamento, pagamento mínimo e
       // projeções de próximas faturas — são a principal fonte de "valor errado". Ex.: o Itaú
@@ -690,7 +727,7 @@ Alpine.data("appState", () => ({
           if (!isNaN(v) && v > 0) { total = v; origem = "total informado na fatura"; break; }
         }
       }
-      return { total: Math.round(total * 100) / 100, origem, qtdItens: itens.length };
+      return { total: Math.round(total * 100) / 100, origem, qtdItens };
     },
 
     // ===================== IMPORTAR VALOR (Compromissos fixos: cartão OU conta) =====================
