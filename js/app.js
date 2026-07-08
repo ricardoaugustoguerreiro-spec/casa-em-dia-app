@@ -441,9 +441,12 @@ Alpine.data("appState", () => ({
         observacao: f.observacao || null,
       };
       if (this.editandoParcelada) {
-        const { error } = await supabase.from("compras_parceladas").update(payload).eq("id", this.editandoParcelada.id);
+        const id = this.editandoParcelada.id;
+        const { error } = await supabase.from("compras_parceladas").update(payload).eq("id", id);
         if (error) return alert("Erro ao salvar: " + error.message);
-        Object.assign(this.editandoParcelada, payload);
+        // atualiza o item no array-fonte (não na cópia do getter) pra a tela reagir na hora
+        const orig = this.comprasParceladas.find((c) => c.id === id);
+        if (orig) Object.assign(orig, payload);
       } else {
         const { error } = await supabase.from("compras_parceladas").insert({ ...payload, created_by: this.uid });
         if (error) return alert("Erro ao salvar: " + error.message);

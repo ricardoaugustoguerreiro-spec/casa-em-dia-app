@@ -454,11 +454,11 @@
                     <div class="flex items-center justify-between gap-2 px-3 py-3 flex-wrap">
                       <div class="min-w-0">
                         <p class="font-medium flex items-center gap-2 flex-wrap">
-                          <span x-text="c.descricao"></span>
+                          <span x-text="c.observacao || c.descricao"></span>
                           <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? 'ativa' : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
                         </p>
+                        <p x-show="c.observacao" class="text-xs text-gray-500 mt-0.5" x-text="'💳 ' + c.descricao"></p>
                         <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.pagas + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · quitada'))) + ' · ' + fmtMoeda(c.valor_parcela) + '/mês'"></p>
-                        <p x-show="c.observacao" class="text-xs text-gray-600 italic mt-0.5" x-text="'📝 ' + c.observacao"></p>
                       </div>
                       <div class="flex items-center gap-1 shrink-0">
                         <p class="font-medium mr-1" x-text="fmtMoeda(c.valor_parcela)"></p>
@@ -490,9 +490,10 @@
                 <option value="jessica">Jéssica</option>
                 <option value="casal">Casal (dos dois)</option>
               </select>
-              <input type="text" placeholder="Descrição (ex: Sofá)" x-model="formParcelada.descricao" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
-              <label class="block text-xs text-gray-500">Observação — o que foi comprado de verdade (opcional)</label>
-              <input type="text" x-model="formParcelada.observacao" placeholder="ex: veio como 'MP*LOJA123' mas é a geladeira" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <label class="block text-xs text-gray-500">Nome como aparece no cartão/fatura (usado pra reconhecer no import)</label>
+              <input type="text" placeholder="ex: MP*LOJA123, PAG*FULANO" x-model="formParcelada.descricao" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <label class="block text-xs text-gray-500">O que foi comprado de verdade (aparece em destaque)</label>
+              <input type="text" x-model="formParcelada.observacao" placeholder="ex: Geladeira Brastemp" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <input type="text" placeholder="Cartão (ex: Itaú)" x-model="formParcelada.cartao" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <input type="number" step="0.01" placeholder="Valor da parcela (R$)" x-model="formParcelada.valor_parcela" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500">1ª parcela (mês)</label>
