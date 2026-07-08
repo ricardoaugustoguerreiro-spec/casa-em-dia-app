@@ -1172,19 +1172,26 @@ Alpine.data("appState", () => ({
       return (y2 - y1) * 12 + (m2 - m1);
     },
 
-    // todas as parcelas ativas (não só as do mês selecionado), com progresso de quantas já passaram
+    // todas as parcelas, com progresso calculado RELATIVO AO MÊS QUE VOCÊ ESTÁ VENDO
+    // (mesFinanceiro), não a "hoje". Assim, ao navegar ‹ › a parcela "ativa" mostra o
+    // número certo da parcela daquele mês, e quem já acabou vira "concluída".
+    //  - parcelaNoMes: qual parcela cai no mês selecionado (1 = primeira)
+    //  - ehNovaNoMes: a parcela COMEÇOU neste mês (parcela 1 cai aqui) → badge "novo"
     get parceladasComProgresso() {
-      const hoje = this.hojeISO().slice(0, 7);
+      const mes = this.mesFinanceiro;
       return this.comprasParceladas
         .map((c) => {
           const inicio = c.parcela_inicio.slice(0, 7);
           const fim = c.parcela_fim.slice(0, 7);
           const totalParcelas = this.diffMeses(inicio, fim) + 1;
-          const passadas = this.diffMeses(inicio, hoje) + 1;
-          const pagas = Math.max(0, Math.min(totalParcelas, passadas));
+          const status = mes < inicio ? "futura" : mes > fim ? "concluida" : "ativa";
+          // nº da parcela que cai no mês visto (limitado ao intervalo válido)
+          const bruto = this.diffMeses(inicio, mes) + 1;
+          const parcelaNoMes = Math.max(1, Math.min(totalParcelas, bruto));
+          const pagas = status === "futura" ? 0 : status === "concluida" ? totalParcelas : parcelaNoMes;
           const restantes = totalParcelas - pagas;
-          const status = hoje < inicio ? "futura" : hoje > fim ? "concluida" : "ativa";
-          return { ...c, totalParcelas, pagas, restantes, status };
+          const ehNovaNoMes = status === "ativa" && inicio === mes;
+          return { ...c, totalParcelas, parcelaNoMes, pagas, restantes, status, ehNovaNoMes };
         })
         .sort((a, b) => a.parcela_inicio.localeCompare(b.parcela_inicio));
     },
@@ -1197,12 +1204,12 @@ Alpine.data("appState", () => ({
         { key: "jessica", nome: "Jéssica", header: "text-pink-700", dot: "bg-pink-500", card: "border-l-4 border-pink-300 bg-pink-50/40", badge: "bg-pink-100 text-pink-700" },
         { key: "casal", nome: "Casal", header: "text-emerald-700", dot: "bg-emerald-500", card: "border-l-4 border-emerald-300 bg-emerald-50/40", badge: "bg-emerald-100 text-emerald-700" },
       ];
-      const todas = this.parceladasComProgresso;
+      // só as parcelas ATIVAS no mês selecionado (inicia ≤ mês ≤ fim). Parcelas que já
+      // quitaram em meses anteriores NÃO aparecem aqui — não são levadas pra frente.
+      const todas = this.parceladasComProgresso.filter((c) => c.status === "ativa");
       return defs.map((g) => {
         const itens = todas.filter((c) => (c.grupo || "casal") === g.key);
-        const totalMes = itens
-          .filter((c) => c.parcela_inicio.slice(0, 7) <= mes && c.parcela_fim.slice(0, 7) >= mes)
-          .reduce((s, c) => s + Number(c.valor_parcela), 0);
+        const totalMes = itens.reduce((s, c) => s + Number(c.valor_parcela), 0);
         return { ...g, itens, totalMes };
       });
     },
@@ -1860,6 +1867,29 @@ Alpine.data("appState", () => ({
     // só as que ainda faltam pagar naquele dia (pra marcadores/alertas de "vencendo")
     contasPendentesDoDia(dataISO) {
       return this.contasDoDia(dataISO).filter((c) => !c.pago);
+    },
+
+    // Parcelas do cartão que caem neste dia do calendário: como a parcela é cobrada DENTRO
+    // da fatura, ela aparece no dia em que a fatura do cartão vence/foi paga. Casa a parcela
+    // ao cartão pela competência da fatura (o nome do cartão bate exato nas importadas).
+    // Devolve nº da parcela referente ao mês e se COMEÇOU nesse mês (nova).
+    parceladasDoDia(dataISO) {
+      if (!dataISO) return [];
+      const out = [];
+      for (const f of this.faturasCartao.filter((f) => this._diaDaConta(f) === dataISO)) {
+        const comp = f.competencia;
+        const nome = this.cartaoNome(f.cartao_id);
+        for (const c of this.comprasParceladas) {
+          const ini = c.parcela_inicio.slice(0, 7);
+          const fim = c.parcela_fim.slice(0, 7);
+          if (ini <= comp && fim >= comp && c.cartao === nome) {
+            const totalParcelas = this.diffMeses(ini, fim) + 1;
+            const parcelaNoMes = this.diffMeses(ini, comp) + 1;
+            out.push({ ...c, totalParcelas, parcelaNoMes, ehNovaNoMes: ini === comp, cartaoFatura: nome });
+          }
+        }
+      }
+      return out;
     },
 
     // conflito financeiro = duas ou mais contas/faturas AINDA PENDENTES vencendo no mesmo dia

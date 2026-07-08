@@ -436,8 +436,8 @@
               <h2 class="text-sm font-semibold text-gray-700">🧾 Compras parceladas no cartão</h2>
               <button @click="abrirNovaParcelada" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
             </div>
-            <p class="text-sm font-semibold text-gray-800 mb-1" x-text="'Total geral do mês (3 grupos): ' + fmtMoeda(totalParceladasDoMes)"></p>
-            <p class="text-xs text-gray-400 mb-3" x-text="parceladasComProgresso.filter(c => c.status === 'ativa').length + ' parcela(s) ativa(s) no total, de ' + comprasParceladas.length + ' cadastrada(s)'"></p>
+            <p class="text-sm font-semibold text-gray-800 mb-1" x-text="'Total do mês (' + nomeMesFinanceiro + ', 3 grupos): ' + fmtMoeda(totalParceladasDoMes)"></p>
+            <p class="text-xs text-gray-400 mb-3" x-text="parceladasComProgresso.filter(c => c.status === 'ativa').length + ' parcela(s) ativa(s) neste mês, de ' + comprasParceladas.length + ' cadastrada(s). Só aparecem as que estão correndo em ' + nomeMesFinanceiro + ' — as já quitadas somem.'"></p>
 
             <template x-for="g in gruposParcela" :key="g.key">
               <div class="mb-4" x-show="g.itens.length > 0">
@@ -455,10 +455,11 @@
                       <div class="min-w-0">
                         <p class="font-medium flex items-center gap-2 flex-wrap">
                           <span x-text="c.observacao || c.descricao"></span>
-                          <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? 'ativa' : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
+                          <span class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? ('ativa · ' + c.parcelaNoMes + '/' + c.totalParcelas) : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
+                          <span x-show="c.ehNovaNoMes" class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-700">novo</span>
                         </p>
                         <p x-show="c.observacao" class="text-xs text-gray-500 mt-0.5" x-text="'💳 ' + c.descricao"></p>
-                        <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.pagas + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · quitada'))) + ' · ' + fmtMoeda(c.valor_parcela) + '/mês'"></p>
+                        <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · última'))) + ' · ' + fmtMoeda(c.valor_parcela) + '/mês'"></p>
                       </div>
                       <div class="flex items-center gap-1 shrink-0">
                         <p class="font-medium mr-1" x-text="fmtMoeda(c.valor_parcela)"></p>
@@ -642,6 +643,7 @@
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>Prazo do Sistema de Joias</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"></span>Conta/fatura vencendo</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>Conta/fatura paga</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span>Parcela na fatura</span>
           <span class="flex items-center gap-1">🌕 Lua cheia/nova</span>
           <template x-if="!isAdmin">
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-pink-500 inline-block"></span>Menstruação</span>
@@ -681,6 +683,7 @@
                       <template x-if="dia && tarefasJoiasDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-amber-500"></span></template>
                       <template x-if="dia && contasPendentesDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-red-600"></span></template>
                       <template x-if="dia && contasDoDia(dia).some(c => c.pago)"><span class="w-1 h-1 rounded-full bg-green-500"></span></template>
+                      <template x-if="dia && parceladasDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-rose-400"></span></template>
                       <template x-if="dia && !isAdmin && faseCicloDoDia(dia) === 'menstrual'"><span class="w-1 h-1 rounded-full bg-pink-500"></span></template>
                       <template x-if="dia && !isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')"><span class="w-1 h-1 rounded-full bg-teal-400"></span></template>
                     </span>
@@ -752,6 +755,19 @@
                 </div>
               </template>
               <p x-show="diaSelecionado && temConflitoFinanceiro(diaSelecionado)" class="text-xs text-red-600 font-medium">⚠️ Mais de uma conta/fatura vencendo nesse dia.</p>
+
+              <template x-for="c in (diaSelecionado ? parceladasDoDia(diaSelecionado) : [])" :key="'parc-' + c.id">
+                <div class="flex items-center justify-between gap-2 rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-rose-700 truncate flex items-center gap-1.5">
+                      <span>🧾</span><span x-text="c.observacao || c.descricao"></span>
+                      <span x-show="c.ehNovaNoMes" class="text-[10px] px-1.5 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-700">novo</span>
+                    </p>
+                    <p class="text-xs text-rose-500/80" x-text="'Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas + (c.cartaoFatura ? ' · ' + c.cartaoFatura : '')"></p>
+                  </div>
+                  <p class="text-sm font-medium text-rose-700 shrink-0" x-text="fmtMoeda(c.valor_parcela)"></p>
+                </div>
+              </template>
             </div>
 
             <form @submit.prevent="salvarEvento" class="border-t border-gray-100 pt-3 space-y-2">
