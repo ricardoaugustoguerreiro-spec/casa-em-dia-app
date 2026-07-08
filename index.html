@@ -334,8 +334,14 @@
               <button @click="editandoDataFatura = null" class="text-gray-400">✕</button>
             </div>
             <form @submit.prevent="salvarDataFatura" class="space-y-2">
-              <label class="block text-xs text-gray-500">Data em que foi paga</label>
-              <input type="date" x-model="formDataFatura.data" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <label class="block text-xs text-gray-500">Vencimento</label>
+              <input type="date" x-model="formDataFatura.due_date" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <template x-if="editandoDataFatura && editandoDataFatura.status === 'pago'">
+                <div>
+                  <label class="block text-xs text-gray-500">Data em que foi paga</label>
+                  <input type="date" x-model="formDataFatura.data" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                </div>
+              </template>
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
           </div>

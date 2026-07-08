@@ -80,7 +80,7 @@ Alpine.data("appState", () => ({
     editandoFatura: null,
     formFatura: { amount: "", status: "pendente" },
     editandoDataFatura: null,
-    formDataFatura: { data: "" },
+    formDataFatura: { due_date: "", data: "" },
 
     // dia a dia: gasto real lançado manualmente OU previsão de gasto futuro
     diaADia: [],
@@ -1288,15 +1288,19 @@ Alpine.data("appState", () => ({
       this.editandoFatura = null;
     },
 
-    // botão 📅 da fatura: editar a data em que foi paga (paid_at)
+    // botão 📅 da fatura: editar o vencimento e a data em que foi paga (paid_at)
     abrirEditarDataFatura(f) {
       this.editandoDataFatura = f;
-      this.formDataFatura = { data: f.paid_at ? f.paid_at.slice(0, 10) : this.hojeISO() };
+      this.formDataFatura = { due_date: f.due_date, data: f.paid_at ? f.paid_at.slice(0, 10) : this.hojeISO() };
     },
 
     async salvarDataFatura() {
-      const paidAt = new Date(this.formDataFatura.data + "T12:00:00").toISOString();
-      const payload = { status: "pago", paid_at: paidAt };
+      const f = this.formDataFatura;
+      const status = this.editandoDataFatura.status;
+      const payload = {
+        due_date: f.due_date,
+        paid_at: status === "pago" ? new Date((f.data || this.hojeISO()) + "T12:00:00").toISOString() : null,
+      };
       const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", this.editandoDataFatura.id);
       if (error) return alert("Erro ao salvar data: " + error.message);
       Object.assign(this.editandoDataFatura, payload);
