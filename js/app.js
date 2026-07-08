@@ -1782,15 +1782,20 @@ Alpine.data("appState", () => ({
       return this.events.filter((e) => e.starts_at && e.starts_at.slice(0, 10) === dataISO);
     },
 
-    // contas fixas + faturas de cartão que vencem nesse dia (pendentes), unificadas
-    // num formato só pra exibir junto com os eventos do calendário/agenda.
+    // contas fixas + faturas de cartão ligadas a esse dia do calendário:
+    // - PENDENTE aparece no dia do vencimento (due_date), em vermelho
+    // - PAGA aparece no dia em que foi paga (paid_at), em verde
+    // Assim o calendário "segue" a aba Compromissos fixos: pagar/editar lá move o marcador aqui.
+    _diaDaConta(item) {
+      return item.status === "pago" && item.paid_at ? item.paid_at.slice(0, 10) : item.due_date;
+    },
     contasDoDia(dataISO) {
       if (!dataISO) return [];
       const contas = this.billPayments
-        .filter((p) => p.due_date === dataISO)
+        .filter((p) => this._diaDaConta(p) === dataISO)
         .map((p) => ({ titulo: this.billName(p.fixed_bill_id), valor: Number(p.amount || 0), origem: "conta_fixa", id: p.id, status: p.status, pago: p.status === "pago" }));
       const faturas = this.faturasCartao
-        .filter((f) => f.due_date === dataISO && Number(f.amount || 0) > 0)
+        .filter((f) => this._diaDaConta(f) === dataISO && Number(f.amount || 0) > 0)
         .map((f) => ({ titulo: "Fatura " + this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), origem: "fatura_cartao", id: f.id, status: f.status, pago: f.status === "pago" }));
       return [...contas, ...faturas];
     },
