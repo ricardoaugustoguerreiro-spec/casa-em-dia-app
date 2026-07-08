@@ -295,6 +295,7 @@
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarFaturaPaga(f)" class="text-xs px-3 py-1.5 rounded-full border" :class="f.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="f.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
+                    <button @click="verContaNoCalendario(f.due_date)" aria-label="Ver no calendário" title="Ver no calendário" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">📅 Calendário</button>
                     <button @click="abrirEditarFatura(f)" aria-label="Editar valor da fatura" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">✎ Editar</button>
                   </div>
                 </div>
@@ -587,6 +588,7 @@
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block"></span>Feriado</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>Prazo do Sistema de Joias</span>
           <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"></span>Conta/fatura vencendo</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>Conta/fatura paga</span>
           <span class="flex items-center gap-1">🌕 Lua cheia/nova</span>
           <template x-if="!isAdmin">
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-pink-500 inline-block"></span>Menstruação</span>
@@ -624,7 +626,8 @@
                       <template x-if="dia && eventosDoDia(dia).some(e => e.tipo === 'trabalho')"><span class="w-1 h-1 rounded-full bg-orange-500"></span></template>
                       <template x-if="dia && feriadoDoDia(dia)"><span class="w-1 h-1 rounded-full bg-gray-400"></span></template>
                       <template x-if="dia && tarefasJoiasDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-amber-500"></span></template>
-                      <template x-if="dia && contasDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-red-600"></span></template>
+                      <template x-if="dia && contasPendentesDoDia(dia).length > 0"><span class="w-1 h-1 rounded-full bg-red-600"></span></template>
+                      <template x-if="dia && contasDoDia(dia).some(c => c.pago)"><span class="w-1 h-1 rounded-full bg-green-500"></span></template>
                       <template x-if="dia && !isAdmin && faseCicloDoDia(dia) === 'menstrual'"><span class="w-1 h-1 rounded-full bg-pink-500"></span></template>
                       <template x-if="dia && !isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')"><span class="w-1 h-1 rounded-full bg-teal-400"></span></template>
                     </span>
@@ -690,9 +693,9 @@
               <p x-show="diaSelecionado && eventosDoDia(diaSelecionado).length === 0" class="text-xs text-gray-400">Nenhum compromisso neste dia.</p>
 
               <template x-for="c in (diaSelecionado ? contasDoDia(diaSelecionado) : [])" :key="c.id">
-                <div class="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3 py-2">
-                  <p class="text-sm font-medium truncate text-red-700" x-text="c.titulo"></p>
-                  <p class="text-sm font-medium shrink-0 text-red-700" x-text="fmtMoeda(c.valor)"></p>
+                <div class="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" :class="c.pago ? 'border-green-100 bg-green-50/60' : 'border-red-100 bg-red-50/60'">
+                  <p class="text-sm font-medium truncate" :class="c.pago ? 'text-green-700' : 'text-red-700'" x-text="(c.pago ? '✓ ' : '') + c.titulo"></p>
+                  <p class="text-sm font-medium shrink-0" :class="c.pago ? 'text-green-700' : 'text-red-700'" x-text="fmtMoeda(c.valor)"></p>
                 </div>
               </template>
               <p x-show="diaSelecionado && temConflitoFinanceiro(diaSelecionado)" class="text-xs text-red-600 font-medium">⚠️ Mais de uma conta/fatura vencendo nesse dia.</p>

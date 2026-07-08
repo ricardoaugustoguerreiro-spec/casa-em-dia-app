@@ -1770,17 +1770,35 @@ Alpine.data("appState", () => ({
     contasDoDia(dataISO) {
       if (!dataISO) return [];
       const contas = this.billPayments
-        .filter((p) => p.due_date === dataISO && p.status === "pendente")
-        .map((p) => ({ titulo: this.billName(p.fixed_bill_id), valor: Number(p.amount || 0), origem: "conta_fixa", id: p.id }));
+        .filter((p) => p.due_date === dataISO)
+        .map((p) => ({ titulo: this.billName(p.fixed_bill_id), valor: Number(p.amount || 0), origem: "conta_fixa", id: p.id, status: p.status, pago: p.status === "pago" }));
       const faturas = this.faturasCartao
-        .filter((f) => f.due_date === dataISO && f.status === "pendente" && Number(f.amount || 0) > 0)
-        .map((f) => ({ titulo: "Fatura " + this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), origem: "fatura_cartao", id: f.id }));
+        .filter((f) => f.due_date === dataISO && Number(f.amount || 0) > 0)
+        .map((f) => ({ titulo: "Fatura " + this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), origem: "fatura_cartao", id: f.id, status: f.status, pago: f.status === "pago" }));
       return [...contas, ...faturas];
     },
 
-    // conflito financeiro = duas ou mais contas/faturas vencendo no mesmo dia
+    // só as que ainda faltam pagar naquele dia (pra marcadores/alertas de "vencendo")
+    contasPendentesDoDia(dataISO) {
+      return this.contasDoDia(dataISO).filter((c) => !c.pago);
+    },
+
+    // conflito financeiro = duas ou mais contas/faturas AINDA PENDENTES vencendo no mesmo dia
     temConflitoFinanceiro(dataISO) {
-      return this.contasDoDia(dataISO).length >= 2;
+      return this.contasPendentesDoDia(dataISO).length >= 2;
+    },
+
+    // pula pra aba Calendário, rola até o mês da conta/fatura e abre o dia
+    verContaNoCalendario(dataISO) {
+      if (!dataISO) return;
+      this.abaAtual = "calendario";
+      const [ano, mes] = dataISO.split("-").map(Number);
+      this.anoCalendario = ano;
+      this.$nextTick(() => {
+        const el = document.getElementById("mes-card-" + (mes - 1));
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      this.selecionarDia(dataISO);
     },
 
     feriadoDoDia(dataISO) {
@@ -2037,7 +2055,7 @@ Alpine.data("appState", () => ({
       return [
         ...this.eventosDoDia(hoje).map((e) => ({ titulo: e.title, tipo: e.tipo === "trabalho" ? "Compromisso de trabalho" : "Compromisso", origem: "calendario" })),
         ...this.tarefasJoiasDoDia(hoje).map((t) => ({ titulo: t.titulo, tipo: "Prazo de joia", origem: "sistema_joias" })),
-        ...this.contasDoDia(hoje).map((c) => ({ titulo: c.titulo + " · " + this.fmtMoeda(c.valor), tipo: c.origem === "fatura_cartao" ? "Fatura vencendo" : "Conta vencendo", origem: "financeiro" })),
+        ...this.contasPendentesDoDia(hoje).map((c) => ({ titulo: c.titulo + " · " + this.fmtMoeda(c.valor), tipo: c.origem === "fatura_cartao" ? "Fatura vencendo" : "Conta vencendo", origem: "financeiro" })),
       ];
     },
 
@@ -2048,7 +2066,7 @@ Alpine.data("appState", () => ({
       for (let i = 0; i < 7; i++) {
         const dataISO = this.addDias(this.hojeISO(), i);
         const eventos = this.eventosDoDia(dataISO);
-        const contas = this.contasDoDia(dataISO);
+        const contas = this.contasPendentesDoDia(dataISO);
         dias.push({
           data: dataISO,
           eventos,
