@@ -66,7 +66,8 @@ Alpine.data("appState", () => ({
     formPagamento: { amount: "", due_date: "", status: "pendente" },
     comprasParceladas: [],
     criandoParcelada: false,
-    formParcelada: { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: "", parcela_fim: "" },
+    editandoParcelada: null,
+    formParcelada: { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: "", parcela_fim: "", grupo: "casal", observacao: "" },
     importandoCsv: false,
     processandoArquivo: false, // spinner enquanto lê CSV/PDF (PDF demora um instante)
     resultadoImportacao: null,
@@ -400,25 +401,56 @@ Alpine.data("appState", () => ({
 
     // ===================== COMPRAS PARCELADAS (cartão) =====================
 
+    // grupo padrão de quem está logado (Ricardo/Jéssica), senão casal
+    _meuGrupo() {
+      if (this.uid === "691ba2e0-0e9d-41ac-9239-1057c4bcec62") return "ricardo";
+      if (this.uid === "8a74c2bb-713d-4c6e-b16a-3140f864079a") return "jessica";
+      return "casal";
+    },
+
     abrirNovaParcelada() {
-      this.formParcelada = { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: this.mesFinanceiro, parcela_fim: "" };
+      this.editandoParcelada = null;
+      this.formParcelada = { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: this.mesFinanceiro, parcela_fim: "", grupo: this._meuGrupo(), observacao: "" };
+      this.criandoParcelada = true;
+    },
+
+    abrirEditarParcelada(c) {
+      this.editandoParcelada = c;
+      this.formParcelada = {
+        descricao: c.descricao,
+        cartao: c.cartao || "",
+        valor_parcela: c.valor_parcela,
+        parcela_inicio: c.parcela_inicio.slice(0, 7),
+        parcela_fim: c.parcela_fim.slice(0, 7),
+        grupo: c.grupo || "casal",
+        observacao: c.observacao || "",
+      };
       this.criandoParcelada = true;
     },
 
     async salvarParcelada() {
       const f = this.formParcelada;
       if (!f.descricao || !f.valor_parcela || !f.parcela_inicio || !f.parcela_fim) return alert("Preencha descrição, valor da parcela, início e fim.");
-      const { error } = await supabase.from("compras_parceladas").insert({
+      const payload = {
         descricao: f.descricao,
         cartao: f.cartao || null,
         valor_parcela: Number(f.valor_parcela),
         parcela_inicio: f.parcela_inicio.length === 7 ? f.parcela_inicio + "-01" : f.parcela_inicio,
         parcela_fim: f.parcela_fim.length === 7 ? f.parcela_fim + "-01" : f.parcela_fim,
-        created_by: this.uid,
-      });
-      if (error) return alert("Erro ao salvar: " + error.message);
+        grupo: f.grupo || "casal",
+        observacao: f.observacao || null,
+      };
+      if (this.editandoParcelada) {
+        const { error } = await supabase.from("compras_parceladas").update(payload).eq("id", this.editandoParcelada.id);
+        if (error) return alert("Erro ao salvar: " + error.message);
+        Object.assign(this.editandoParcelada, payload);
+      } else {
+        const { error } = await supabase.from("compras_parceladas").insert({ ...payload, created_by: this.uid });
+        if (error) return alert("Erro ao salvar: " + error.message);
+        await this.loadDashboard();
+      }
       this.criandoParcelada = false;
-      await this.loadDashboard();
+      this.editandoParcelada = null;
     },
 
     async excluirParcelada(id) {
@@ -828,7 +860,7 @@ Alpine.data("appState", () => ({
           const { error } = await supabase.from("compras_parceladas").update(payload).eq("id", existente.id);
           if (!error) { Object.assign(existente, payload); atualizadas++; }
         } else {
-          const nova = { descricao: p.descricao, cartao: cartaoNome || null, valor_parcela: p.valor, parcela_inicio: inicio, parcela_fim: fim, created_by: this.uid };
+          const nova = { descricao: p.descricao, cartao: cartaoNome || null, valor_parcela: p.valor, parcela_inicio: inicio, parcela_fim: fim, grupo: this._meuGrupo(), created_by: this.uid };
           const { data, error } = await supabase.from("compras_parceladas").insert(nova).select().single();
           if (!error && data) { this.comprasParceladas.push(data); novas++; }
         }
@@ -1152,6 +1184,24 @@ Alpine.data("appState", () => ({
           return { ...c, totalParcelas, pagas, restantes, status };
         })
         .sort((a, b) => a.parcela_inicio.localeCompare(b.parcela_inicio));
+    },
+
+    // parcelas separadas em 3 grupos (Ricardo / Jéssica / Casal), cada um com seu total do mês
+    get gruposParcela() {
+      const mes = this.mesFinanceiro;
+      const defs = [
+        { key: "ricardo", nome: "Ricardo", header: "text-indigo-700", dot: "bg-indigo-500", card: "border-l-4 border-indigo-300 bg-indigo-50/40", badge: "bg-indigo-100 text-indigo-700" },
+        { key: "jessica", nome: "Jéssica", header: "text-pink-700", dot: "bg-pink-500", card: "border-l-4 border-pink-300 bg-pink-50/40", badge: "bg-pink-100 text-pink-700" },
+        { key: "casal", nome: "Casal", header: "text-emerald-700", dot: "bg-emerald-500", card: "border-l-4 border-emerald-300 bg-emerald-50/40", badge: "bg-emerald-100 text-emerald-700" },
+      ];
+      const todas = this.parceladasComProgresso;
+      return defs.map((g) => {
+        const itens = todas.filter((c) => (c.grupo || "casal") === g.key);
+        const totalMes = itens
+          .filter((c) => c.parcela_inicio.slice(0, 7) <= mes && c.parcela_fim.slice(0, 7) >= mes)
+          .reduce((s, c) => s + Number(c.valor_parcela), 0);
+        return { ...g, itens, totalMes };
+      });
     },
 
     // ===================== AJUSTES (perfil, saldo, categorias) =====================
