@@ -265,6 +265,7 @@
                       <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(p.status)" x-text="p.status"></span>
                     </p>
                     <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(p.due_date) + ' · ' + fmtMoeda(p.amount)"></p>
+                    <p x-show="p.status === 'pago' && p.paid_at" class="text-xs text-green-600 font-medium" x-text="'✓ Pago em ' + fmtData(p.paid_at.slice(0,10))"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarPago(p)" class="text-xs px-3 py-1.5 rounded-full border" :class="p.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="p.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
@@ -356,6 +357,12 @@
                 <option value="pendente">Pendente</option>
                 <option value="pago">Pago</option>
               </select>
+              <template x-if="formPagamento.status === 'pago'">
+                <div>
+                  <label class="block text-xs text-gray-500">Data em que foi paga</label>
+                  <input type="date" x-model="formPagamento.paid_at_data" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                </div>
+              </template>
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
           </div>

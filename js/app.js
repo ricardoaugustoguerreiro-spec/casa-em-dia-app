@@ -381,7 +381,7 @@ Alpine.data("appState", () => ({
 
     abrirEditarPagamento(p) {
       this.editandoPagamento = p;
-      this.formPagamento = { amount: p.amount, due_date: p.due_date, status: p.status };
+      this.formPagamento = { amount: p.amount, due_date: p.due_date, status: p.status, paid_at_data: p.paid_at ? p.paid_at.slice(0, 10) : this.hojeISO() };
     },
 
     async salvarPagamento() {
@@ -390,7 +390,7 @@ Alpine.data("appState", () => ({
         amount: Number(f.amount),
         due_date: f.due_date,
         status: f.status,
-        paid_at: f.status === "pago" ? (this.editandoPagamento.paid_at || new Date().toISOString()) : null,
+        paid_at: f.status === "pago" ? new Date((f.paid_at_data || this.hojeISO()) + "T12:00:00").toISOString() : null,
       };
       const { error } = await supabase.from("bill_payments").update(payload).eq("id", this.editandoPagamento.id);
       if (error) return alert("Erro ao salvar: " + error.message);
