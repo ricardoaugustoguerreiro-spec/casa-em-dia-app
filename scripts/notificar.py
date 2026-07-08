@@ -41,15 +41,26 @@ JANELA_CONTA_DIAS = 1  # avisa contas que vencem dentro desses dias
 # aborta TODO o envio com "Missing 'sub' from claims" e nenhum push sai.
 VAPID_SUB_PADRAO = "mailto:ricardoaugustoguerreiro@gmail.com"
 
+# Espelha a validação do py_vapid._check_sub: o 'sub' PRECISA ser um mailto: com
+# e-mail de verdade (usuario@dominio.tld) ou uma URL https://. Um valor não-vazio
+# porém malformado (ex.: "mailto:algo-sem-arroba") é REPROVADO pelo py_vapid e
+# derruba o envio com "Missing 'sub' from claims". Por isso validamos aqui e
+# caímos no padrão sempre que o valor não for claramente aceito — o 'sub' é só o
+# contato do remetente pro serviço de push, então usar o e-mail padrão é seguro.
+_SUB_VALIDO_RE = re.compile(
+    r"^(mailto:.+@(localhost|[\w%-]+(\.[\w%-]+)+)|https://[\w.-]+\.[\w.-]+)$",
+    re.IGNORECASE,
+)
+
 
 def _sub_vapid(valor):
-    """Devolve um claim 'sub' VAPID sempre válido (mailto:/https:), nunca vazio."""
+    """Devolve um claim 'sub' VAPID SEMPRE aceito pelo py_vapid (nunca vazio/inválido)."""
     v = (valor or "").strip()
-    if not v:
-        return VAPID_SUB_PADRAO
-    if not v.startswith(("mailto:", "https:")):
-        v = "mailto:" + v
-    return v
+    if v and not v.lower().startswith(("mailto:", "https:")):
+        v = "mailto:" + v  # veio só o e-mail cru
+    if v and _SUB_VALIDO_RE.match(v):
+        return v
+    return VAPID_SUB_PADRAO
 
 
 def ler_segredo(texto, rotulo_inicio):
