@@ -292,10 +292,11 @@
                       <span x-show="alertaLimiteCartao(f) === 'perto'" class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700">⚠️ perto do limite</span>
                     </p>
                     <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(f.due_date) + ' · ' + fmtMoeda(f.amount) + (percentualLimiteCartao(f) !== null ? ' · ' + Math.round(percentualLimiteCartao(f)*100) + '% do limite' : '')"></p>
+                    <p x-show="f.status === 'pago' && f.paid_at" class="text-xs text-green-600 font-medium" x-text="'✓ Pago em ' + fmtData(f.paid_at.slice(0,10))"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarFaturaPaga(f)" class="text-xs px-3 py-1.5 rounded-full border" :class="f.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="f.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
-                    <button @click="verContaNoCalendario(f.due_date)" aria-label="Ver no calendário" title="Ver no calendário" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">📅 Calendário</button>
+                    <button @click="abrirEditarDataFatura(f)" aria-label="Editar data do pagamento" title="Data em que foi paga" class="text-gray-300 hover:text-gray-600 p-1">📅</button>
                     <button @click="abrirEditarFatura(f)" aria-label="Editar valor da fatura" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">✎ Editar</button>
                   </div>
                 </div>
@@ -319,6 +320,21 @@
                 <option value="pendente">Pendente</option>
                 <option value="pago">Pago</option>
               </select>
+              <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- MODAL: editar data do pagamento da fatura -->
+        <div x-show="editandoDataFatura" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="editandoDataFatura = null">
+          <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
+            <div class="flex items-center justify-between mb-3">
+              <p class="font-semibold" x-text="editandoDataFatura ? ('📅 ' + cartaoNome(editandoDataFatura.cartao_id)) : ''"></p>
+              <button @click="editandoDataFatura = null" class="text-gray-400">✕</button>
+            </div>
+            <form @submit.prevent="salvarDataFatura" class="space-y-2">
+              <label class="block text-xs text-gray-500">Data em que foi paga</label>
+              <input type="date" x-model="formDataFatura.data" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
           </div>

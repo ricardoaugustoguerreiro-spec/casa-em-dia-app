@@ -79,6 +79,8 @@ Alpine.data("appState", () => ({
     faturasCartao: [],
     editandoFatura: null,
     formFatura: { amount: "", status: "pendente" },
+    editandoDataFatura: null,
+    formDataFatura: { data: "" },
 
     // dia a dia: gasto real lançado manualmente OU previsão de gasto futuro
     diaADia: [],
@@ -1279,11 +1281,26 @@ Alpine.data("appState", () => ({
     },
 
     async salvarFatura() {
-      const payload = { amount: Number(this.formFatura.amount), status: this.formFatura.status, paid_at: this.formFatura.status === "pago" ? new Date().toISOString() : null };
+      const payload = { amount: Number(this.formFatura.amount), status: this.formFatura.status, paid_at: this.formFatura.status === "pago" ? (this.editandoFatura.paid_at || new Date().toISOString()) : null };
       const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", this.editandoFatura.id);
       if (error) return alert("Erro ao salvar fatura: " + error.message);
       Object.assign(this.faturasCartao.find((f) => f.id === this.editandoFatura.id), payload);
       this.editandoFatura = null;
+    },
+
+    // botão 📅 da fatura: editar a data em que foi paga (paid_at)
+    abrirEditarDataFatura(f) {
+      this.editandoDataFatura = f;
+      this.formDataFatura = { data: f.paid_at ? f.paid_at.slice(0, 10) : this.hojeISO() };
+    },
+
+    async salvarDataFatura() {
+      const paidAt = new Date(this.formDataFatura.data + "T12:00:00").toISOString();
+      const payload = { status: "pago", paid_at: paidAt };
+      const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", this.editandoDataFatura.id);
+      if (error) return alert("Erro ao salvar data: " + error.message);
+      Object.assign(this.editandoDataFatura, payload);
+      this.editandoDataFatura = null;
     },
 
     // ===================== DIA A DIA: gasto real ou previsão de gasto futuro =====================
@@ -1786,19 +1803,6 @@ Alpine.data("appState", () => ({
     // conflito financeiro = duas ou mais contas/faturas AINDA PENDENTES vencendo no mesmo dia
     temConflitoFinanceiro(dataISO) {
       return this.contasPendentesDoDia(dataISO).length >= 2;
-    },
-
-    // pula pra aba Calendário, rola até o mês da conta/fatura e abre o dia
-    verContaNoCalendario(dataISO) {
-      if (!dataISO) return;
-      this.abaAtual = "calendario";
-      const [ano, mes] = dataISO.split("-").map(Number);
-      this.anoCalendario = ano;
-      this.$nextTick(() => {
-        const el = document.getElementById("mes-card-" + (mes - 1));
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-      this.selecionarDia(dataISO);
     },
 
     feriadoDoDia(dataISO) {
