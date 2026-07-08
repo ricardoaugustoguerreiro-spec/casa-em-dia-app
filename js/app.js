@@ -47,7 +47,7 @@ Alpine.data("appState", () => ({
     balances: [],
     loadingData: true,
     abaAtual: "financeiro", // financeiro | calendario | ajustes
-    abaFinanceiro: "resumo", // resumo | contas_fixas | dia_a_dia | cartao_variaveis
+    abaFinanceiro: "dashboard", // dashboard | contas_fixas | parceladas | visao_anual
     mesFinanceiro: new Date().toISOString().slice(0, 7), // "AAAA-MM"
     mostrarDetalheGasto: false, // expande/recolhe o detalhamento de "Já saiu" na Visão geral do mês
     formPerfil: { display_name: "", color: "#7c3aed" },
@@ -62,6 +62,21 @@ Alpine.data("appState", () => ({
     abaAnualAberta: null, // "AAAA-MM" do mês expandido na Visão Anual
     anoVisaoAnual: new Date().getFullYear(),
     filtroCategoriaTransacao: "",
+    // dashboard financeiro
+    dashDia: null, // dia clicado no mini-calendário do Dashboard
+    // visão anual (grade estilo Excel) — TRABALHAM SOBRE OS MESMOS bill_payments/faturas_cartao,
+    // sem duplicar dados: cada célula lê/grava o mesmo registro que aparece em Compromissos fixos.
+    gridSel: null,          // { tipo, id, mes } célula/linha selecionada (painel inferior)
+    gridObsTmp: "",         // observação (só desta competência) editável no painel inferior
+    celulaEditando: null,   // { tipo, id, mes } em edição inline (duplo clique)
+    celulaValorTmp: "",
+    contaDestaque: null,    // "conta:<id>" | "cartao:<id>" pra realçar ao abrir competência
+    _destaqueTimer: null,
+    // modo planejamento
+    modoPlanejamento: false,
+    planejSel: [],          // ["tipo:id", ...] contas marcadas
+    planejMesRef: null,     // "AAAA-MM" mês de referência da soma
+    planejSaldo: "",        // saldo disponível informado (persistido em localStorage)
     editandoPagamento: null,
     formPagamento: { amount: "", due_date: "", status: "pendente" },
     comprasParceladas: [],
@@ -108,6 +123,7 @@ Alpine.data("appState", () => ({
 
     async init() {
       this.atualizarStatusNotificacao();
+      this.planejSaldo = localStorage.getItem("casa-em-dia:planejSaldo") || "";
       const lembrado = localStorage.getItem("casa-em-dia:lastEmail");
       if (lembrado) {
         this.email = lembrado;
@@ -1524,8 +1540,8 @@ Alpine.data("appState", () => ({
 
     // ===================== VISÃO ANUAL (timeline por mês de competência) =====================
 
-    anoVisaoAnualAnterior() { this.anoVisaoAnual--; },
-    anoVisaoAnualSeguinte() { this.anoVisaoAnual++; },
+    async anoVisaoAnualAnterior() { this.anoVisaoAnual--; this.planejMesRef = this._mesRefPadrao(); await this.garantirAnoCompletoVisaoAnual(); },
+    async anoVisaoAnualSeguinte() { this.anoVisaoAnual++; this.planejMesRef = this._mesRefPadrao(); await this.garantirAnoCompletoVisaoAnual(); },
 
     toggleMesAnual(mes) {
       this.abaAnualAberta = this.abaAnualAberta === mes ? null : mes;
@@ -1612,6 +1628,322 @@ Alpine.data("appState", () => ({
     // navegação por clique nos cards superiores / cards de cartão
     irPara(aba) {
       this.abaFinanceiro = aba;
+    },
+
+    // ===================== DASHBOARD FINANCEIRO =====================
+    // Números do mês seguem o mês selecionado (mesFinanceiro); alertas de "hoje" e
+    // "próximos 7 dias" são sempre relativos à data real. Tudo vem dos MESMOS registros
+    // (bill_payments + faturas_cartao) que Compromissos fixos — sem duplicação.
+
+    get dashPagoNoMes() {
+      const contas = this.billPaymentsDoMes.filter((p) => p.status === "pago").reduce((s, p) => s + Number(p.amount || 0), 0);
+      const cartoes = this.faturasCartaoDoMes.filter((f) => f.status === "pago").reduce((s, f) => s + Number(f.amount || 0), 0);
+      return contas + cartoes;
+    },
+    get dashPendenteNoMes() { return this.pendenteEmContas.total; },
+    get dashPrevistoNoMes() { return this.totalContasFixasComCartoesDoMes; },
+    get dashContasHoje() { return this.contasPendentesDoDia(this.hojeISO()); },
+
+    // contas/faturas pendentes a vencer nos próximos 7 dias (amanhã .. +7), cada uma com a data
+    get dashProximos7() {
+      const out = [];
+      for (let i = 1; i <= 7; i++) {
+        const d = this.addDias(this.hojeISO(), i);
+        for (const c of this.contasPendentesDoDia(d)) out.push({ ...c, data: d });
+      }
+      return out;
+    },
+
+    // mini-calendário do mês selecionado (grade de dias, com nulos no começo da semana)
+    get dashDiasDoMes() {
+      const [ano, mes] = this.mesFinanceiro.split("-").map(Number);
+      const primeiro = new Date(ano, mes - 1, 1).getDay();
+      const total = new Date(ano, mes, 0).getDate();
+      const cel = [];
+      for (let i = 0; i < primeiro; i++) cel.push(null);
+      for (let d = 1; d <= total; d++) cel.push(`${this.mesFinanceiro}-${String(d).padStart(2, "0")}`);
+      return cel;
+    },
+    selecionarDashDia(dataISO) {
+      if (!dataISO) return;
+      this.dashDia = this.dashDia === dataISO ? null : dataISO;
+    },
+
+    // ===================== VISÃO ANUAL: grade estilo Excel =====================
+    // Linhas = contas fixas (agrupadas por categoria) + cartões. Colunas = 12 meses de
+    // competência. Cada célula lê/escreve o MESMO bill_payment/fatura de Compromissos fixos.
+
+    _pagamentoContaMes(fixedBillId, mes) {
+      return this.billPayments.find((p) => p.fixed_bill_id === fixedBillId && (p.competencia || p.due_date.slice(0, 7)) === mes);
+    },
+    _valorContaMes(fixedBillId, mes) {
+      const p = this._pagamentoContaMes(fixedBillId, mes);
+      return p ? Number(p.amount || 0) : 0;
+    },
+    _faturaCartaoMes(cartaoId, mes) {
+      return this.faturasCartao.find((f) => f.cartao_id === cartaoId && f.competencia === mes);
+    },
+    _valorCartaoMes(cartaoId, mes) {
+      const f = this._faturaCartaoMes(cartaoId, mes);
+      return f ? Number(f.amount || 0) : 0;
+    },
+
+    registroCelula(tipo, id, mes) {
+      return tipo === "conta" ? this._pagamentoContaMes(id, mes) : this._faturaCartaoMes(id, mes);
+    },
+    valorCelula(tipo, id, mes) {
+      return tipo === "conta" ? this._valorContaMes(id, mes) : this._valorCartaoMes(id, mes);
+    },
+    statusCelula(tipo, id, mes) {
+      const r = this.registroCelula(tipo, id, mes);
+      return r ? r.status : null;
+    },
+
+    get mesesDoAnoVisao() {
+      const ano = this.anoVisaoAnual;
+      return Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, "0")}`);
+    },
+
+    // grade completa: grupos por categoria (+ grupo Cartões), com subtotais, total geral e renda
+    get gradeAnual() {
+      const meses = this.mesesDoAnoVisao;
+      const zeros = () => Array(12).fill(0);
+      const catNome = (id) => this.categories.find((c) => c.id === id)?.name || "Sem categoria";
+
+      const grupos = [];
+      const bills = this.fixedBills.filter((b) => b.active !== false);
+      const porCat = new Map();
+      for (const b of bills) {
+        const key = b.category_id || "__sem__";
+        if (!porCat.has(key)) porCat.set(key, []);
+        porCat.get(key).push(b);
+      }
+      for (const [key, bs] of porCat) {
+        const contas = bs.map((b) => {
+          const mv = meses.map((m) => this._valorContaMes(b.id, m));
+          return { tipo: "conta", id: b.id, nome: b.name, meses: mv, total: mv.reduce((s, v) => s + v, 0) };
+        }).sort((a, b) => a.nome.localeCompare(b.nome));
+        const sub = zeros();
+        contas.forEach((c) => c.meses.forEach((v, i) => (sub[i] += v)));
+        grupos.push({ nome: key === "__sem__" ? "Sem categoria" : catNome(key), contas, subMeses: sub, subTotal: sub.reduce((s, v) => s + v, 0) });
+      }
+      grupos.sort((a, b) => a.nome.localeCompare(b.nome));
+
+      const cartoes = this.cartoes.filter((c) => c.active !== false).map((c) => {
+        const mv = meses.map((m) => this._valorCartaoMes(c.id, m));
+        return { tipo: "cartao", id: c.id, nome: c.nome, meses: mv, total: mv.reduce((s, v) => s + v, 0) };
+      }).sort((a, b) => a.nome.localeCompare(b.nome));
+      if (cartoes.length) {
+        const sub = zeros();
+        cartoes.forEach((c) => c.meses.forEach((v, i) => (sub[i] += v)));
+        grupos.push({ nome: "💳 Cartões", contas: cartoes, subMeses: sub, subTotal: sub.reduce((s, v) => s + v, 0) });
+      }
+
+      const totalMeses = zeros();
+      grupos.forEach((g) => g.subMeses.forEach((v, i) => (totalMeses[i] += v)));
+      const totalGeral = totalMeses.reduce((s, v) => s + v, 0);
+      const rendaMeses = meses.map((m) => this.rendaDoMesEspecifico(m));
+      return { meses, grupos, totalMeses, totalGeral, rendaMeses, rendaTotal: rendaMeses.reduce((s, v) => s + v, 0) };
+    },
+
+    // achata a grade numa lista de linhas tipadas — Alpine <template x-for> exige uma raiz
+    // por iteração, então header de grupo / conta / subtotal / total / renda viram linhas.
+    get linhasGradeAnual() {
+      const g = this.gradeAnual;
+      const linhas = [];
+      for (const grupo of g.grupos) {
+        linhas.push({ kind: "grupo", key: "g-" + grupo.nome, nome: grupo.nome });
+        for (const c of grupo.contas) {
+          linhas.push({ kind: "conta", key: c.tipo + "-" + c.id, tipo: c.tipo, id: c.id, nome: c.nome, meses: c.meses, total: c.total });
+        }
+        linhas.push({ kind: "subtotal", key: "s-" + grupo.nome, nome: "Subtotal · " + grupo.nome, meses: grupo.subMeses, total: grupo.subTotal });
+      }
+      linhas.push({ kind: "total", key: "total", nome: "TOTAL", meses: g.totalMeses, total: g.totalGeral });
+      linhas.push({ kind: "renda", key: "renda", nome: "Renda", meses: g.rendaMeses, total: g.rendaTotal });
+      return linhas;
+    },
+
+    async abrirVisaoAnual() {
+      this.abaFinanceiro = "visao_anual";
+      if (!this.planejMesRef) this.planejMesRef = this._mesRefPadrao();
+      await this.garantirAnoCompletoVisaoAnual();
+    },
+
+    // --- seleção de célula/linha + painel inferior ---
+    celulaSelecionada(tipo, id, mes) {
+      const s = this.gridSel;
+      return !!s && s.tipo === tipo && s.id === id && s.mes === mes;
+    },
+    linhaSelecionada(tipo, id) {
+      const s = this.gridSel;
+      return !!s && s.tipo === tipo && s.id === id;
+    },
+    selecionarCelula(tipo, id, mes) {
+      this.gridSel = { tipo, id, mes };
+      const r = this.registroCelula(tipo, id, mes);
+      this.gridObsTmp = r ? (r.notes || "") : "";
+    },
+
+    get gridSelInfo() {
+      if (!this.gridSel) return null;
+      const { tipo, id, mes } = this.gridSel;
+      const r = this.registroCelula(tipo, id, mes);
+      return {
+        tipo, id, mes,
+        nome: tipo === "conta" ? this.billName(id) : this.cartaoNome(id),
+        nomeCompetencia: this.nomeMes(mes),
+        valor: r ? Number(r.amount || 0) : 0,
+        due_date: r ? r.due_date : null,
+        status: r ? r.status : "sem lançamento",
+        paid_at: r && r.paid_at ? r.paid_at.slice(0, 10) : null,
+      };
+    },
+
+    // histórico de todas as competências dessa conta (o ano todo e além), mais recente primeiro
+    get historicoContaSel() {
+      if (!this.gridSel) return [];
+      const { tipo, id } = this.gridSel;
+      const regs = tipo === "conta"
+        ? this.billPayments.filter((p) => p.fixed_bill_id === id)
+        : this.faturasCartao.filter((f) => f.cartao_id === id);
+      return regs
+        .map((r) => ({ competencia: r.competencia || (r.due_date ? r.due_date.slice(0, 7) : ""), status: r.status, paid_at: r.paid_at ? r.paid_at.slice(0, 10) : null, valor: Number(r.amount || 0) }))
+        .sort((a, b) => (b.competencia || "").localeCompare(a.competencia || ""));
+    },
+
+    async salvarObsCompetencia() {
+      if (!this.gridSel) return;
+      const { tipo, mes, id } = this.gridSel;
+      const r = this.registroCelula(tipo, id, mes);
+      if (!r) return;
+      const tabela = tipo === "conta" ? "bill_payments" : "faturas_cartao";
+      const { error } = await supabase.from(tabela).update({ notes: this.gridObsTmp || null }).eq("id", r.id);
+      if (error) return alert("Erro ao salvar observação: " + error.message);
+      r.notes = this.gridObsTmp || null;
+    },
+
+    // --- edição inline (duplo clique), sem popup: edita só aquela competência ---
+    emEdicaoCelula(tipo, id, mes) {
+      const e = this.celulaEditando;
+      return !!e && e.tipo === tipo && e.id === id && e.mes === mes;
+    },
+    iniciarEdicaoCelula(tipo, id, mes) {
+      this.selecionarCelula(tipo, id, mes);
+      this.celulaEditando = { tipo, id, mes };
+      const v = this.valorCelula(tipo, id, mes);
+      this.celulaValorTmp = v ? String(v) : "";
+    },
+    async salvarCelula() {
+      if (!this.celulaEditando) return;
+      const { tipo, id, mes } = this.celulaEditando;
+      this.celulaEditando = null; // fecha o input já (evita re-entrada pelo @blur)
+      const valor = Number(this.celulaValorTmp) || 0;
+      let r = this.registroCelula(tipo, id, mes);
+      if (!r) {
+        if (tipo === "conta") await this.garantirContasFixasDoMes(mes);
+        else await this.garantirFaturasCartaoDoMes(mes);
+        r = this.registroCelula(tipo, id, mes);
+      }
+      if (!r) return;
+      const tabela = tipo === "conta" ? "bill_payments" : "faturas_cartao";
+      const { error } = await supabase.from(tabela).update({ amount: valor }).eq("id", r.id);
+      if (error) return alert("Erro ao salvar: " + error.message);
+      r.amount = valor;
+    },
+    cancelarEdicaoCelula() { this.celulaEditando = null; },
+
+    // --- abrir a competência em Compromissos fixos, posicionando na conta ---
+    async abrirCompetenciaNaConta(mes, tipo, id) {
+      this.mesFinanceiro = mes;
+      this.abaFinanceiro = "contas_fixas";
+      await this.garantirContasFixasDoMes(mes);
+      await this.garantirFaturasCartaoDoMes(mes);
+      this.contaDestaque = tipo + ":" + id;
+      this.$nextTick(() => {
+        const el = document.getElementById("cf-" + tipo + "-" + id);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      clearTimeout(this._destaqueTimer);
+      this._destaqueTimer = setTimeout(() => { this.contaDestaque = null; }, 3000);
+    },
+    contaEstaDestacada(tipo, id) {
+      return this.contaDestaque === tipo + ":" + id;
+    },
+
+    // ===================== MODO PLANEJAMENTO (soma de contas selecionadas) =====================
+    _mesRefPadrao() {
+      const mesHoje = this.hojeISO().slice(0, 7);
+      return mesHoje.slice(0, 4) === String(this.anoVisaoAnual) ? mesHoje : `${this.anoVisaoAnual}-01`;
+    },
+    togglePlanejamento() {
+      this.modoPlanejamento = !this.modoPlanejamento;
+      if (!this.planejMesRef) this.planejMesRef = this._mesRefPadrao();
+      if (!this.modoPlanejamento) this.planejSel = [];
+    },
+    _planejChave(tipo, id) { return tipo + ":" + id; },
+    planejMarcado(tipo, id) { return this.planejSel.includes(this._planejChave(tipo, id)); },
+    togglePlanejConta(tipo, id) {
+      const k = this._planejChave(tipo, id);
+      const i = this.planejSel.indexOf(k);
+      if (i >= 0) this.planejSel.splice(i, 1);
+      else this.planejSel.push(k);
+    },
+    get planejTotal() {
+      const mes = this.planejMesRef;
+      if (!mes) return 0;
+      return this.planejSel.reduce((s, k) => { const [tipo, id] = k.split(":"); return s + this.valorCelula(tipo, id, mes); }, 0);
+    },
+    get planejSaldoRestante() { return (Number(this.planejSaldo) || 0) - this.planejTotal; },
+    salvarPlanejSaldo() { localStorage.setItem("casa-em-dia:planejSaldo", this.planejSaldo || ""); },
+    limparPlanejamento() { this.planejSel = []; },
+    nomePlanejConta(k) {
+      const [tipo, id] = k.split(":");
+      return tipo === "conta" ? this.billName(id) : this.cartaoNome(id);
+    },
+    async marcarPlanejamentoPago() {
+      const mes = this.planejMesRef;
+      if (!this.planejSel.length || !mes) return;
+      if (!confirm(`Marcar ${this.planejSel.length} conta(s) como paga(s) em ${this.nomeMes(mes)}?`)) return;
+      for (const k of [...this.planejSel]) {
+        const [tipo, id] = k.split(":");
+        let r = this.registroCelula(tipo, id, mes);
+        if (!r) {
+          if (tipo === "conta") await this.garantirContasFixasDoMes(mes);
+          else await this.garantirFaturasCartaoDoMes(mes);
+          r = this.registroCelula(tipo, id, mes);
+        }
+        if (!r || r.status === "pago") continue;
+        const tabela = tipo === "conta" ? "bill_payments" : "faturas_cartao";
+        const payload = { status: "pago", paid_at: new Date().toISOString() };
+        const { error } = await supabase.from(tabela).update(payload).eq("id", r.id);
+        if (!error) Object.assign(r, payload);
+      }
+      alert("Contas marcadas como pagas.");
+      this.planejSel = [];
+      this.modoPlanejamento = false;
+    },
+    exportarPlanejamento() {
+      const mes = this.planejMesRef;
+      const linhas = this.planejSel.map((k) => { const [tipo, id] = k.split(":"); return { conta: this.nomePlanejConta(k), tipo, valor: this.valorCelula(tipo, id, mes) }; });
+      const conteudo = {
+        gerado_em: new Date().toISOString(),
+        mes_referencia: mes,
+        contas: linhas,
+        total: this.planejTotal,
+        saldo_disponivel: Number(this.planejSaldo) || 0,
+        saldo_restante: this.planejSaldoRestante,
+      };
+      const blob = new Blob([JSON.stringify(conteudo, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `planejamento-${mes}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+
+    fmtMoedaCurta(v) {
+      return (Number(v) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     },
 
     // lista unificada de lançamentos avulsos do mês (cartão/variáveis/dia a dia via CSV),
