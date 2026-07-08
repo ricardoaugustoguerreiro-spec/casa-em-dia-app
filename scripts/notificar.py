@@ -33,6 +33,24 @@ VAPIDFILE = BASE_DIR / "_segredos-nao-compartilhar" / "vapid.txt"
 JANELA_EVENTO_HORAS = 24  # começa a avisar eventos que faltam até essas horas
 JANELA_CONTA_DIAS = 1  # avisa contas que vencem dentro desses dias
 
+# E-mail do admin usado como fallback do claim VAPID "sub".
+# ATENÇÃO: em GitHub Actions, `env: X: ${{ secrets.X }}` injeta string VAZIA
+# quando a secret não existe/está vazia — então a env var EXISTE mas é "".
+# Nesse caso `os.environ.get(..., default)` NÃO usa o default. Por isso o
+# _sub_vapid abaixo trata vazio/sem-esquema explicitamente, senão py_vapid
+# aborta TODO o envio com "Missing 'sub' from claims" e nenhum push sai.
+VAPID_SUB_PADRAO = "mailto:ricardoaugustoguerreiro@gmail.com"
+
+
+def _sub_vapid(valor):
+    """Devolve um claim 'sub' VAPID sempre válido (mailto:/https:), nunca vazio."""
+    v = (valor or "").strip()
+    if not v:
+        return VAPID_SUB_PADRAO
+    if not v.startswith(("mailto:", "https:")):
+        v = "mailto:" + v
+    return v
+
 
 def ler_segredo(texto, rotulo_inicio):
     m = re.search(re.escape(rotulo_inicio) + r"\s*\n?(.+?)\n", texto)
@@ -48,7 +66,7 @@ def carregar_config():
         url = os.environ["SUPABASE_URL"]
         service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
         vapid_priv = os.environ["VAPID_PRIVATE_KEY"]
-        vapid_claims = {"sub": os.environ.get("VAPID_SUBJECT", "mailto:casa-em-dia-app@example.com")}
+        vapid_claims = {"sub": _sub_vapid(os.environ.get("VAPID_SUBJECT"))}
         return url.rstrip("/"), service_key, vapid_priv, vapid_claims
 
     secs = SECFILE.read_text(encoding="utf-8")
@@ -56,7 +74,8 @@ def carregar_config():
     url = re.search(r"Project URL:\s*(\S+)", secs).group(1)
     service_key = re.search(r"Service_role key.*?:\s*\n?(\S+)", secs, re.S).group(1)
     vapid_priv = re.search(r"Chave privada.*?:\s*\n?(\S+)", vapid, re.S).group(1)
-    vapid_claims = {"sub": re.search(r"mailto:\S+", vapid).group(0)}
+    m_sub = re.search(r"mailto:\S+", vapid)
+    vapid_claims = {"sub": _sub_vapid(m_sub.group(0) if m_sub else None)}
     return url.rstrip("/"), service_key, vapid_priv, vapid_claims
 
 
@@ -109,6 +128,12 @@ def enviar_push(url, key, sub, payload, vapid_priv, vapid_claims):
                 timeout=10,
             )
             print(f"  [limpeza] subscription expirada removida: {sub['id']}")
+        return False
+    except Exception as e:
+        # Qualquer outro erro (ex.: VapidException por config, chave inválida)
+        # NÃO pode derrubar a execução inteira e bloquear os demais avisos —
+        # isola por dispositivo e segue. Ver histórico do bug do claim 'sub'.
+        print(f"  [erro push inesperado] {sub['endpoint'][:60]}...: {e}")
         return False
 
 
