@@ -294,6 +294,7 @@
                     <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(f.due_date) + ' · ' + fmtMoeda(f.amount) + (percentualLimiteCartao(f) !== null ? ' · ' + Math.round(percentualLimiteCartao(f)*100) + '% do limite' : '')"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
+                    <button @click="marcarFaturaPaga(f)" class="text-xs px-3 py-1.5 rounded-full border" :class="f.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="f.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
                     <button @click="abrirEditarFatura(f)" aria-label="Editar valor da fatura" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">✎ Editar</button>
                   </div>
                 </div>

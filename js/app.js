@@ -1265,6 +1265,14 @@ Alpine.data("appState", () => ({
       return null;
     },
 
+    async marcarFaturaPaga(f) {
+      const novoStatus = f.status === "pago" ? "pendente" : "pago";
+      const payload = { status: novoStatus, paid_at: novoStatus === "pago" ? new Date().toISOString() : null };
+      const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", f.id);
+      if (error) return alert("Erro ao atualizar fatura: " + error.message);
+      Object.assign(f, payload);
+    },
+
     abrirEditarFatura(f) {
       this.editandoFatura = f;
       this.formFatura = { amount: f.amount, status: f.status };
