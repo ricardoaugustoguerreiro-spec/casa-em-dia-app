@@ -1613,7 +1613,7 @@ Alpine.data("appState", () => ({
       "Carro": "Veículos", "IPVA Carro": "Veículos", "Licenciamento": "Veículos",
     },
     _ORDEM_GRUPOS_VISAO_GERAL: ["Contas fixas", "Veículos", "Cartões"],
-    _MOSTRAR_SUBTOTAL_VISAO_GERAL: { "Contas fixas": false, "Veículos": false, "Cartões": true },
+    _MOSTRAR_SUBTOTAL_VISAO_GERAL: { "Contas fixas": false, "Veículos": false, "Cartões": false },
 
     abrirVisaoGeral() {
       this.abaFinanceiro = "visao_geral";
