@@ -1713,7 +1713,6 @@ Alpine.data("appState", () => ({
           linhas.push({ tipo: "subtotal", chave: "subtotal|" + g.nome, grupo: g.nome, label: "Subtotal " + g.nome, valores: g.subtotal });
         }
       }
-      linhas.push({ tipo: "grand", chave: "grand", grupo: null, label: "Total geral", valores: totalGeral });
       return linhas;
     },
 
