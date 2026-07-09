@@ -1,0 +1,12 @@
+# Lições aprendidas — rodar (publicação do Casa em Dia)
+
+Cada entrada aqui deve ter um passo correspondente no checklist de SKILL.md.
+Não basta registrar a lição — se não virou checklist, ela vai se repetir.
+
+## #1 — 09/07/2026 — Sessão Cowork/Claude Desktop não tem `bash`/`git` no Drive, nem consegue abrir `file://`
+**O que quebrou:** ao implementar a "Visão Geral" (tela estilo Excel) direto no `index.html`/`js/app.js` reais e o usuário pedir "pode executar dentro do aplicativo", não foi possível nem publicar (`git push`) nem testar ao vivo a partir desta sessão.
+**Causa raiz (duas limitações distintas do ambiente, não bug do app):**
+  1. `H:\Meu Drive\FINANÇAS\Casa-em-Dia-App` está acessível para as ferramentas de arquivo (Read/Write/Edit/Grep/Glob), mas **não está montado no sandbox de shell** (`mcp__workspace__bash`) desta sessão — não existe `bash`/`git`/`python` alcançando esse caminho. Editar o arquivo com Edit/Write muda o Drive, mas não publica nada; o site do GitHub Pages só atualiza com um `git push` real, que exige shell com acesso ao repositório.
+  2. A ferramenta de navegação do Chrome (`mcp__claude-in-chrome__navigate`) não trata `file://` corretamente — prefixa `https://` em qualquer string que não comece com `http(s)://`, gerando `https://file:///H:/...` (malformado, erro). Mesmo contornando isso, `file://` também bloqueia por CORS o `<script type="module">` que carrega `js/app.js` (mesma causa-raiz já documentada na lição #2 de `verify-casa-em-dia`), então testar via arquivo local nunca funcionaria de qualquer forma.
+**Correção:** nenhuma no código do app — é um fato permanente do ambiente desta sessão, não algo a "consertar". O fluxo correto passou a ser: (1) eu edito os arquivos reais no Drive via Read/Write/Edit; (2) o usuário roda no PRÓPRIO terminal dele `git add -A && git commit -m "..." && git push` (esta sessão não pode fazer isso por ele); (3) só depois do push eu verifico ao vivo, navegando com o Chrome MCP para a URL pública real (`https://ricardoaugustoguerreiro-spec.github.io/casa-em-dia-app/`), nunca para um caminho `file://` ou `H:\...`.
+**Prevenção (novo item no checklist abaixo, item 6):** antes de prometer "posso rodar/testar isso dentro do aplicativo" numa sessão Cowork/Claude Desktop, checar se o passo exige shell com acesso ao Drive (git, scripts Python) ou navegação — se exigir, avisar de imediato que o `git push` é manual (do usuário) e que a verificação só é possível DEPOIS do push, contra a URL pública. Nunca tentar `file://` como atalho.

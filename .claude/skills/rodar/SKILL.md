@@ -60,6 +60,12 @@ Mesmo formato das skills de verificação:
 ```
 Inclua sempre: quais migrations rodaram nesta execução (ou "nenhuma pendente"), se o commit foi feito e o hash/resumo, e se a verificação achou algo.
 
+### 6. Sessão sem shell/git no Drive (Cowork/Claude Desktop) — lição #1 de `lessons.md`
+Antes de tentar os passos 1 e 4 acima, confirme se este ambiente tem `bash`/`git` alcançando `H:\Meu Drive\FINANÇAS\Casa-em-Dia-App` (rode `pwd`/`git status` e veja se erra). Se não tiver (caso de sessões Cowork/Claude Desktop, onde só Read/Write/Edit/Grep/Glob chegam no Drive, sem shell):
+- Não prometa "rodar/publicar/testar dentro do aplicativo" — isso não é possível a partir daqui.
+- Edite os arquivos normalmente (Read/Write/Edit), mas avise já de início que o `git add/commit/push` precisa ser rodado pelo próprio usuário, no terminal dele.
+- Nunca tente abrir `index.html` via `file://` pra testar (nem pelo Chrome MCP nem sugerindo ao usuário) — CORS bloqueia o `<script type="module">` e a ferramenta de navegação malforma URLs `file://`. Testar/verificar só é possível DEPOIS do usuário confirmar o push, navegando para a URL pública real.
+
 ## Quando NÃO rodar automaticamente
 Mesmo esta skill sendo "automática", sempre **avise antes de** `git push` se for a primeira vez na sessão — depois disso, pushes seguintes na mesma sessão de trabalho não precisam de nova confirmação, a menos que o usuário tenha pedido explicitamente pra revisar cada passo. Nunca rode migrations que alterem dados reais existentes (`update`/`delete` em massa) sem mostrar antes o que o SQL faz — `alter table add column` e `create table` são seguros de rodar direto; `update`/`delete` sem `where` por id específico merecem uma frase de aviso antes.
 

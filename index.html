@@ -194,6 +194,7 @@
           <button @click="abaFinanceiro='resumo'" :class="abaFinanceiro==='resumo' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Resumo</button>
           <button @click="abaFinanceiro='contas_fixas'" :class="abaFinanceiro==='contas_fixas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Compromissos fixos</button>
           <button @click="abaFinanceiro='parceladas'" :class="abaFinanceiro==='parceladas' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Parceladas</button>
+          <button @click="abrirVisaoGeral()" :class="abaFinanceiro==='visao_geral' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:bg-white/60'" class="rounded-full px-4 py-1.5 text-sm font-medium transition whitespace-nowrap shrink-0">Visão Geral</button>
         </div>
 
         <!-- RESUMO -->
@@ -474,6 +475,79 @@
               </div>
             </template>
             <p x-show="comprasParceladas.length === 0" class="text-xs text-gray-400 py-2">Nenhuma compra parcelada cadastrada.</p>
+          </section>
+        </template>
+
+        <!-- VISÃO GERAL -->
+        <template x-if="abaFinanceiro === 'visao_geral'">
+          <section class="bg-white rounded-2xl shadow-sm p-4">
+            <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
+              <h2 class="text-sm font-semibold text-gray-700">📊 Visão Geral</h2>
+              <span class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-500">Somente consulta</span>
+            </div>
+            <p class="text-xs text-gray-500 mb-3">Clique numa célula (ou clique-e-arraste) pra somar valores, igual Excel. Clique na categoria pra recolher. Segue Compromissos fixos e Cartões automaticamente — nada é cadastrado aqui.</p>
+
+            <div class="flex items-center justify-between mb-3 bg-gray-50 rounded-2xl px-2 py-2" style="max-width:180px;">
+              <button @click="anoVisaoGeralAnterior()" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
+              <p class="font-semibold" x-text="anoVisaoAnual"></p>
+              <button @click="anoVisaoGeralSeguinte()" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
+            </div>
+
+            <div class="rounded-xl border border-gray-100 overflow-auto select-none" style="max-height:460px;" @mouseup.window="finalizarArrastoVisaoGeral()">
+              <table class="w-max min-w-full text-xs border-collapse">
+                <thead>
+                  <tr>
+                    <th class="sticky left-0 top-0 z-40 bg-gray-900 text-white text-left px-3 py-2 font-semibold" style="min-width:170px;">Conta</th>
+                    <template x-for="(mes, mi) in nomesMeses" :key="'th-'+mi">
+                      <th class="sticky top-0 z-30 bg-gray-900 text-white px-3 py-2 font-semibold text-right" style="min-width:90px;" x-text="mes.slice(0,3)"></th>
+                    </template>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(linha, ridx) in visaoGeralLinhasVisiveis" :key="linha.chave">
+                    <tr :class="linha.tipo === 'grupo' ? 'bg-gray-50 cursor-pointer' : (linha.tipo === 'conta' ? 'hover:bg-rose-50/60' : '')"
+                        @click="linha.tipo === 'grupo' ? toggleGrupoVisaoGeral(linha.grupo) : null">
+                      <td class="sticky left-0 px-3 py-2 border-b whitespace-nowrap"
+                          :class="{
+                            'z-20 top-[34px] bg-rose-50 font-bold text-rose-700 text-[11px] uppercase tracking-wide border-rose-300 border-b-2': linha.tipo === 'total',
+                            'bg-gray-50 font-semibold text-gray-700 text-xs uppercase tracking-wide border-gray-200': linha.tipo === 'grupo',
+                            'pl-9 bg-white text-gray-700 border-gray-100': linha.tipo === 'conta',
+                            'pl-9 bg-gray-50/70 text-[11px] uppercase tracking-wide text-gray-500 border-gray-200': linha.tipo === 'subtotal',
+                            'bg-gray-900 text-white text-xs uppercase tracking-wide font-bold border-0': linha.tipo === 'grand',
+                          }"
+                          x-text="linha.label"></td>
+                      <template x-for="(v, mi) in linha.valores" :key="linha.chave+'-'+mi">
+                        <td class="px-3 py-2 text-right whitespace-nowrap border-b"
+                            :class="{
+                              'cursor-cell': linha.tipo !== 'grupo',
+                              'z-10 top-[34px] bg-rose-50 font-bold text-rose-700 border-rose-300 border-b-2': linha.tipo === 'total',
+                              'sticky': linha.tipo === 'total',
+                              'bg-gray-50 border-gray-200': linha.tipo === 'grupo',
+                              'border-gray-100': linha.tipo === 'conta',
+                              'font-semibold text-gray-600 bg-gray-50/70 border-gray-200': linha.tipo === 'subtotal',
+                              'bg-gray-900 text-white font-bold border-0': linha.tipo === 'grand',
+                              'text-gray-300': v === null,
+                              'bg-rose-100 ring-1 ring-inset ring-rose-300': (linha.chave+'|'+mi) in selecaoVisaoGeral,
+                              'bg-rose-50': !((linha.chave+'|'+mi) in selecaoVisaoGeral) && (ridx+'|'+mi) in previaArrastoVisaoGeral,
+                            }"
+                            @mousedown.prevent="linha.tipo !== 'grupo' ? iniciarArrastoVisaoGeral(ridx, mi) : null"
+                            @mouseenter="continuarArrastoVisaoGeral(ridx, mi)"
+                            x-text="v === null ? (linha.tipo === 'grupo' ? '' : '–') : fmtMoeda(v)"></td>
+                      </template>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 flex-wrap mt-2 px-1 py-2 rounded-lg bg-gray-50 border border-gray-100 text-xs">
+              <div class="flex items-center gap-4 flex-wrap">
+                <span class="text-gray-500">Selecionadas: <strong class="text-gray-800" x-text="statsSelecaoVisaoGeral.qtd"></strong></span>
+                <span class="text-gray-500">Soma: <strong class="text-rose-700" x-text="fmtMoeda(statsSelecaoVisaoGeral.soma)"></strong></span>
+                <span class="text-gray-500">Média: <strong class="text-gray-800" x-text="fmtMoeda(statsSelecaoVisaoGeral.media)"></strong></span>
+              </div>
+              <button @click="limparSelecaoVisaoGeral()" class="text-gray-400 hover:text-rose-600 underline">Limpar seleção</button>
+            </div>
           </section>
         </template>
 

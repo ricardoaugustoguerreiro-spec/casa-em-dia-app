@@ -47,7 +47,7 @@ Alpine.data("appState", () => ({
     balances: [],
     loadingData: true,
     abaAtual: "financeiro", // financeiro | calendario | ajustes
-    abaFinanceiro: "resumo", // resumo | contas_fixas | dia_a_dia | cartao_variaveis
+    abaFinanceiro: "resumo", // resumo | contas_fixas | dia_a_dia | cartao_variaveis | visao_geral
     mesFinanceiro: new Date().toISOString().slice(0, 7), // "AAAA-MM"
     mostrarDetalheGasto: false, // expande/recolhe o detalhamento de "Já saiu" na Visão geral do mês
     formPerfil: { display_name: "", color: "#7c3aed" },
@@ -61,6 +61,12 @@ Alpine.data("appState", () => ({
     editandoTransacao: null,
     abaAnualAberta: null, // "AAAA-MM" do mês expandido na Visão Anual
     anoVisaoAnual: new Date().getFullYear(),
+    colapsadasVisaoGeral: {}, // { "Contas fixas": true } = categoria recolhida na Visão Geral
+    selecaoVisaoGeral: {}, // { "chave-da-celula": valorNumerico } — seleção estilo Excel
+    _visaoGeralAnoCarregado: null, // último ano pro qual já rodou garantirAnoCompletoVisaoAnual
+    arrastandoVisaoGeral: false,
+    _ancoraArrastoVisaoGeral: null, // { linha: índice em visaoGeralLinhasVisiveis, col: índice do mês }
+    previaArrastoVisaoGeral: {}, // { "linha|col": true } — retângulo em prévia enquanto arrasta
     filtroCategoriaTransacao: "",
     editandoPagamento: null,
     formPagamento: { amount: "", due_date: "", status: "pendente" },
@@ -1595,6 +1601,206 @@ Alpine.data("appState", () => ({
         await this.garantirContasFixasDoMes(mes);
         await this.garantirFaturasCartaoDoMes(mes);
       }
+    },
+
+    // ===================== VISÃO GERAL (Contas fixas + Cartões, mês a mês, estilo Excel) =====================
+    // Grupo de exibição por categoria/conta. Fixed_bills sem entrada aqui caem em "Contas
+    // fixas" por padrão. Criou categoria nova de veículo? Adicione o nome dela aqui também,
+    // senão ela aparece no grupo errado — não tem coluna "grupo" no banco, isso é só front-end.
+    _GRUPO_VISAO_GERAL: {
+      "Água": "Contas fixas", "Luz": "Contas fixas", "Casa": "Contas fixas",
+      "Internet": "Contas fixas", "IPTU": "Contas fixas", "MEI": "Contas fixas",
+      "Carro": "Veículos", "IPVA Carro": "Veículos", "Licenciamento": "Veículos",
+    },
+    _ORDEM_GRUPOS_VISAO_GERAL: ["Contas fixas", "Veículos", "Cartões"],
+    _MOSTRAR_SUBTOTAL_VISAO_GERAL: { "Contas fixas": false, "Veículos": false, "Cartões": true },
+
+    abrirVisaoGeral() {
+      this.abaFinanceiro = "visao_geral";
+      this.garantirAnoVisaoGeralCarregado();
+    },
+
+    anoVisaoGeralAnterior() {
+      this.anoVisaoAnual--;
+      this.selecaoVisaoGeral = {};
+      this.garantirAnoVisaoGeralCarregado();
+    },
+    anoVisaoGeralSeguinte() {
+      this.anoVisaoAnual++;
+      this.selecaoVisaoGeral = {};
+      this.garantirAnoVisaoGeralCarregado();
+    },
+
+    // gera bill_payments e faturas_cartao do ano inteiro (não só do mês navegado), senão
+    // meses que você nunca abriu em "Compromissos fixos" apareceriam em branco aqui mesmo
+    // tendo conta fixa ativa. Só roda uma vez por ano (cacheado em _visaoGeralAnoCarregado).
+    async garantirAnoVisaoGeralCarregado() {
+      if (this._visaoGeralAnoCarregado === this.anoVisaoAnual) return;
+      await this.garantirAnoCompletoVisaoAnual();
+      this._visaoGeralAnoCarregado = this.anoVisaoAnual;
+    },
+
+    // Pivô: uma linha por conta fixa (nome do fixed_bill) ou por cartão, uma coluna por mês
+    // de competência. NUNCA lê de uma tabela própria — só agrega fixed_bills + bill_payments
+    // + cartoes + faturas_cartao ao vivo, então qualquer alteração em Compromissos fixos ou
+    // nos cartões se reflete aqui sem nenhum passo extra.
+    get visaoGeralData() {
+      const ano = this.anoVisaoAnual;
+      const meses = Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, "0")}`);
+      const linhas = {};
+
+      for (const bill of this.fixedBills) {
+        const categoria = this.categories.find((c) => c.id === bill.category_id);
+        const grupo = this._GRUPO_VISAO_GERAL[categoria?.name] || this._GRUPO_VISAO_GERAL[bill.name] || "Contas fixas";
+        if (!linhas[bill.name]) linhas[bill.name] = { grupo, valores: Array(12).fill(null) };
+        meses.forEach((mes, i) => {
+          const pagamentos = this.billPayments.filter(
+            (p) => p.fixed_bill_id === bill.id && (p.competencia || p.due_date.slice(0, 7)) === mes,
+          );
+          if (pagamentos.length) {
+            linhas[bill.name].valores[i] = pagamentos.reduce((s, p) => s + Number(p.amount || 0), 0);
+          }
+        });
+      }
+
+      for (const cartao of this.cartoes) {
+        linhas[cartao.nome] = {
+          grupo: "Cartões",
+          valores: meses.map((mes) => {
+            const f = this.faturasCartao.find((x) => x.cartao_id === cartao.id && x.competencia === mes);
+            return f ? Number(f.amount || 0) : null;
+          }),
+        };
+      }
+
+      const grupos = this._ORDEM_GRUPOS_VISAO_GERAL.map((nomeGrupo) => {
+        const contas = Object.entries(linhas)
+          .filter(([, v]) => v.grupo === nomeGrupo)
+          .map(([nome, v]) => ({ nome, valores: v.valores }))
+          .sort((a, b) => a.nome.localeCompare(b.nome));
+        const subtotal = meses.map((_, i) => {
+          const vals = contas.map((c) => c.valores[i]).filter((v) => v !== null && v !== undefined);
+          return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+        });
+        return {
+          nome: nomeGrupo,
+          contas,
+          subtotal,
+          mostrarSubtotal: this._MOSTRAR_SUBTOTAL_VISAO_GERAL[nomeGrupo] !== false,
+        };
+      });
+
+      const totalGeral = meses.map((_, i) => {
+        const vals = grupos.map((g) => g.subtotal[i]).filter((v) => v !== null && v !== undefined);
+        return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+      });
+
+      return { meses, grupos, totalGeral };
+    },
+
+    // achata visaoGeralData numa lista única de linhas (total / cabeçalho de grupo / conta /
+    // subtotal / total geral), todas com o mesmo formato { valores: [12] } — deixa o template
+    // do index.html simples, um único x-for em vez de tabela aninhada dentro de tabela.
+    get visaoGeralLinhas() {
+      const { grupos, totalGeral } = this.visaoGeralData;
+      const linhas = [{ tipo: "total", chave: "total", grupo: null, label: "Total do mês", valores: totalGeral }];
+      for (const g of grupos) {
+        linhas.push({ tipo: "grupo", chave: "grupo|" + g.nome, grupo: g.nome, label: g.nome, valores: Array(12).fill(null) });
+        for (const c of g.contas) {
+          linhas.push({ tipo: "conta", chave: "conta|" + g.nome + "|" + c.nome, grupo: g.nome, label: c.nome, valores: c.valores });
+        }
+        if (g.mostrarSubtotal) {
+          linhas.push({ tipo: "subtotal", chave: "subtotal|" + g.nome, grupo: g.nome, label: "Subtotal " + g.nome, valores: g.subtotal });
+        }
+      }
+      linhas.push({ tipo: "grand", chave: "grand", grupo: null, label: "Total geral", valores: totalGeral });
+      return linhas;
+    },
+
+    // mesma lista, só que sem as linhas de conta escondidas por categoria recolhida — é
+    // sobre essa lista (índices consecutivos) que o retângulo de arraste é calculado.
+    get visaoGeralLinhasVisiveis() {
+      return this.visaoGeralLinhas.filter((l) => l.tipo !== "conta" || !this.colapsadasVisaoGeral[l.grupo]);
+    },
+
+    toggleGrupoVisaoGeral(nomeGrupo) {
+      this.colapsadasVisaoGeral[nomeGrupo] = !this.colapsadasVisaoGeral[nomeGrupo];
+      this.selecaoVisaoGeral = {};
+      this.previaArrastoVisaoGeral = {};
+    },
+
+    // clique-a-clique: cada clique soma ou tira a célula do conjunto selecionado, tipo
+    // Ctrl+clique no Excel. Usado quando o "arraste" não saiu do lugar (mousedown+mouseup
+    // na mesma célula sem passar por outra no meio).
+    toggleCelulaVisaoGeral(chave, valor) {
+      if (valor === null || valor === undefined) return;
+      if (chave in this.selecaoVisaoGeral) {
+        const copia = { ...this.selecaoVisaoGeral };
+        delete copia[chave];
+        this.selecaoVisaoGeral = copia;
+      } else {
+        this.selecaoVisaoGeral = { ...this.selecaoVisaoGeral, [chave]: valor };
+      }
+    },
+
+    limparSelecaoVisaoGeral() {
+      this.selecaoVisaoGeral = {};
+      this.previaArrastoVisaoGeral = {};
+    },
+
+    // ---- arraste estilo Excel (mousedown numa célula, mouseenter nas seguintes, mouseup solta) ----
+    iniciarArrastoVisaoGeral(linhaIdx, col) {
+      this.arrastandoVisaoGeral = true;
+      this._ancoraArrastoVisaoGeral = { linha: linhaIdx, col };
+      this.previaArrastoVisaoGeral = { [linhaIdx + "|" + col]: true };
+    },
+
+    continuarArrastoVisaoGeral(linhaIdx, col) {
+      if (!this.arrastandoVisaoGeral || !this._ancoraArrastoVisaoGeral) return;
+      const a = this._ancoraArrastoVisaoGeral;
+      const r1 = Math.min(a.linha, linhaIdx), r2 = Math.max(a.linha, linhaIdx);
+      const c1 = Math.min(a.col, col), c2 = Math.max(a.col, col);
+      const previa = {};
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) previa[r + "|" + c] = true;
+      this.previaArrastoVisaoGeral = previa;
+    },
+
+    // solta o arraste em qualquer lugar da tela (@mouseup.window) — cobre o caso de soltar
+    // fora de uma célula. Retângulo de 1 célula só = toggle (liga/desliga); mais de uma
+    // célula = soma todas ao conjunto selecionado (não desmarca as que já estavam dentro).
+    finalizarArrastoVisaoGeral() {
+      if (!this.arrastandoVisaoGeral) return;
+      this.arrastandoVisaoGeral = false;
+      const celulas = Object.keys(this.previaArrastoVisaoGeral);
+      this.previaArrastoVisaoGeral = {};
+      this._ancoraArrastoVisaoGeral = null;
+      if (celulas.length === 0) return;
+
+      const linhasVisiveis = this.visaoGeralLinhasVisiveis;
+      if (celulas.length === 1) {
+        const [linhaIdx, col] = celulas[0].split("|").map(Number);
+        const linha = linhasVisiveis[linhaIdx];
+        if (!linha || linha.tipo === "grupo") return;
+        this.toggleCelulaVisaoGeral(linha.chave + "|" + col, linha.valores[col]);
+        return;
+      }
+
+      const nova = { ...this.selecaoVisaoGeral };
+      for (const chaveCel of celulas) {
+        const [linhaIdx, col] = chaveCel.split("|").map(Number);
+        const linha = linhasVisiveis[linhaIdx];
+        if (!linha || linha.tipo === "grupo") continue;
+        const valor = linha.valores[col];
+        if (valor === null || valor === undefined) continue;
+        nova[linha.chave + "|" + col] = valor;
+      }
+      this.selecaoVisaoGeral = nova;
+    },
+
+    get statsSelecaoVisaoGeral() {
+      const vals = Object.values(this.selecaoVisaoGeral);
+      const soma = vals.reduce((a, b) => a + b, 0);
+      return { qtd: vals.length, soma, media: vals.length ? soma / vals.length : 0 };
     },
 
     get billPaymentsDoMes() {
