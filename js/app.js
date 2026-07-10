@@ -1652,31 +1652,31 @@ Alpine.data("appState", () => ({
       for (const bill of this.fixedBills) {
         const categoria = this.categories.find((c) => c.id === bill.category_id);
         const grupo = this._GRUPO_VISAO_GERAL[categoria?.name] || this._GRUPO_VISAO_GERAL[bill.name] || "Contas fixas";
-        if (!linhas[bill.name]) linhas[bill.name] = { grupo, valores: Array(12).fill(null) };
+        if (!linhas[bill.name]) linhas[bill.name] = { grupo, valores: Array(12).fill(null), pagos: Array(12).fill(false) };
         meses.forEach((mes, i) => {
           const pagamentos = this.billPayments.filter(
             (p) => p.fixed_bill_id === bill.id && (p.competencia || p.due_date.slice(0, 7)) === mes,
           );
           if (pagamentos.length) {
             linhas[bill.name].valores[i] = pagamentos.reduce((s, p) => s + Number(p.amount || 0), 0);
+            linhas[bill.name].pagos[i] = pagamentos.every((p) => p.status === "pago");
           }
         });
       }
 
       for (const cartao of this.cartoes) {
+        const faturas = meses.map((mes) => this.faturasCartao.find((x) => x.cartao_id === cartao.id && x.competencia === mes));
         linhas[cartao.nome] = {
           grupo: "Cartões",
-          valores: meses.map((mes) => {
-            const f = this.faturasCartao.find((x) => x.cartao_id === cartao.id && x.competencia === mes);
-            return f ? Number(f.amount || 0) : null;
-          }),
+          valores: faturas.map((f) => (f ? Number(f.amount || 0) : null)),
+          pagos: faturas.map((f) => f?.status === "pago"),
         };
       }
 
       const grupos = this._ORDEM_GRUPOS_VISAO_GERAL.map((nomeGrupo) => {
         const contas = Object.entries(linhas)
           .filter(([, v]) => v.grupo === nomeGrupo)
-          .map(([nome, v]) => ({ nome, valores: v.valores }))
+          .map(([nome, v]) => ({ nome, valores: v.valores, pagos: v.pagos }))
           .sort((a, b) => a.nome.localeCompare(b.nome));
         const subtotal = meses.map((_, i) => {
           const vals = contas.map((c) => c.valores[i]).filter((v) => v !== null && v !== undefined);
@@ -1707,7 +1707,7 @@ Alpine.data("appState", () => ({
       for (const g of grupos) {
         linhas.push({ tipo: "grupo", chave: "grupo|" + g.nome, grupo: g.nome, label: g.nome, valores: Array(12).fill(null) });
         for (const c of g.contas) {
-          linhas.push({ tipo: "conta", chave: "conta|" + g.nome + "|" + c.nome, grupo: g.nome, label: c.nome, valores: c.valores });
+          linhas.push({ tipo: "conta", chave: "conta|" + g.nome + "|" + c.nome, grupo: g.nome, label: c.nome, valores: c.valores, pagos: c.pagos });
         }
         if (g.mostrarSubtotal) {
           linhas.push({ tipo: "subtotal", chave: "subtotal|" + g.nome, grupo: g.nome, label: "Subtotal " + g.nome, valores: g.subtotal });
