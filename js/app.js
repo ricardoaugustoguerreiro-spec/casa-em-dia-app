@@ -415,6 +415,14 @@ Alpine.data("appState", () => ({
       return "casal";
     },
 
+    // nome de quem cadastrou (created_by) — usado só no grupo "Novas" pra dar uma pista
+    // de quem subiu aquela parcela, já que ainda não foi classificada de quem é de verdade.
+    nomeCriador(uid) {
+      if (uid === "691ba2e0-0e9d-41ac-9239-1057c4bcec62") return "Ricardo";
+      if (uid === "8a74c2bb-713d-4c6e-b16a-3140f864079a") return "Jéssica";
+      return null;
+    },
+
     abrirNovaParcelada() {
       this.editandoParcelada = null;
       this.formParcelada = { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: this.mesFinanceiro, parcela_fim: "", grupo: this._meuGrupo(), observacao: "" };

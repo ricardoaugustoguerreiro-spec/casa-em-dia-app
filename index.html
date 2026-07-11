@@ -458,6 +458,7 @@
                           <span x-text="c.observacao || c.descricao"></span>
                           <span class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? ('ativa · ' + c.parcelaNoMes + '/' + c.totalParcelas) : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
                           <span x-show="c.ehNovaNoMes" class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-700">novo</span>
+                          <span x-show="g.key === 'novas' && nomeCriador(c.created_by)" class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold bg-amber-100 text-amber-700" x-text="'adicionado por ' + nomeCriador(c.created_by)"></span>
                         </p>
                         <p x-show="c.observacao" class="text-xs text-gray-500 mt-0.5" x-text="'💳 ' + c.descricao"></p>
                         <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · última'))) + ' · ' + fmtMoeda(c.valor_parcela) + '/mês'"></p>
@@ -566,7 +567,7 @@
                 <option value="ricardo">Ricardo</option>
                 <option value="jessica">Jéssica</option>
                 <option value="casal">Casal (dos dois)</option>
-                <option value="novas" x-show="formParcelada.grupo === 'novas'">🆕 Novas (ainda não revisado)</option>
+                <option value="novas">🆕 Novas (ainda não sei de quem é)</option>
               </select>
               <label class="block text-xs text-gray-500">Nome como aparece no cartão/fatura (usado pra reconhecer no import)</label>
               <input type="text" placeholder="ex: MP*LOJA123, PAG*FULANO" x-model="formParcelada.descricao" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
