@@ -14,3 +14,4 @@ migration_renda_pessoa.sql | aplicada em 2026-06-24 (via psycopg2, coluna pessoa
 migration_limite_cartao.sql | aplicada em 2026-06-24 (via psycopg2, coluna limite_credito em cartoes)
 migration_eventos_silenciados.sql | aplicada em 2026-06-29T22:08:20
 migration_notificacoes_por_sub.sql | aplicada em 2026-06-29T22:14:23
+migration_data_compra_parceladas.sql | aplicada em 2026-07-11 (via Supabase MCP, alter table compras_parceladas add column data_compra date)

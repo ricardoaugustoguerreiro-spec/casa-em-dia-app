@@ -573,12 +573,21 @@
               <input type="text" placeholder="ex: MP*LOJA123, PAG*FULANO" x-model="formParcelada.descricao" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500">O que foi comprado de verdade (aparece em destaque)</label>
               <input type="text" x-model="formParcelada.observacao" placeholder="ex: Geladeira Brastemp" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
-              <input type="text" placeholder="Cartão (ex: Itaú)" x-model="formParcelada.cartao" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <label class="block text-xs text-gray-500">Cartão</label>
+              <select x-model="_cartaoParcelaSel" @change="formParcelada.cartao = (_cartaoParcelaSel === '__novo__' ? '' : _cartaoParcelaSel)" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <option value="">Sem cartão</option>
+                <template x-for="ct in cartoes.filter(ct => ct.active !== false)" :key="'cps' + ct.id">
+                  <option :value="ct.nome" x-text="'💳 ' + ct.nome"></option>
+                </template>
+                <option value="__novo__">➕ Cartão novo (digitar)</option>
+              </select>
+              <input x-show="_cartaoParcelaSel === '__novo__'" type="text" placeholder="Nome do cartão" x-model="formParcelada.cartao" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <input type="number" step="0.01" placeholder="Valor da parcela (R$)" x-model="formParcelada.valor_parcela" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
-              <label class="block text-xs text-gray-500">1ª parcela (mês)</label>
-              <input type="month" x-model="formParcelada.parcela_inicio" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-              <label class="block text-xs text-gray-500">Última parcela (mês)</label>
-              <input type="month" x-model="formParcelada.parcela_fim" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <label class="block text-xs text-gray-500">Dia da compra</label>
+              <input type="date" x-model="formParcelada.dataCompra" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <label class="block text-xs text-gray-500">Quantas parcelas</label>
+              <input type="number" min="1" step="1" placeholder="ex: 10" x-model="formParcelada.parcelasQtd" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <p x-show="previewFimParcelada" class="text-xs text-gray-400" x-text="'termina em ' + nomeMes(previewFimParcelada)"></p>
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
           </div>

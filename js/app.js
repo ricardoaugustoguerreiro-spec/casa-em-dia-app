@@ -73,7 +73,8 @@ Alpine.data("appState", () => ({
     comprasParceladas: [],
     criandoParcelada: false,
     editandoParcelada: null,
-    formParcelada: { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: "", parcela_fim: "", grupo: "casal", observacao: "" },
+    formParcelada: { descricao: "", cartao: "", valor_parcela: "", dataCompra: "", parcelasQtd: "", grupo: "casal", observacao: "" },
+    _cartaoParcelaSel: "", // controla o <select> de cartão no form de parcela ("" = sem cartão, "__novo__" = digitar)
     importandoCsv: false,
     processandoArquivo: false, // spinner enquanto lê CSV/PDF (PDF demora um instante)
     resultadoImportacao: null,
@@ -425,33 +426,48 @@ Alpine.data("appState", () => ({
 
     abrirNovaParcelada() {
       this.editandoParcelada = null;
-      this.formParcelada = { descricao: "", cartao: "", valor_parcela: "", parcela_inicio: this.mesFinanceiro, parcela_fim: "", grupo: this._meuGrupo(), observacao: "" };
+      this.formParcelada = { descricao: "", cartao: "", valor_parcela: "", dataCompra: this.hojeISO(), parcelasQtd: "", grupo: this._meuGrupo(), observacao: "" };
+      this._cartaoParcelaSel = "";
       this.criandoParcelada = true;
     },
 
     abrirEditarParcelada(c) {
       this.editandoParcelada = c;
+      const qtd = this.diffMeses(c.parcela_inicio.slice(0, 7), c.parcela_fim.slice(0, 7)) + 1;
       this.formParcelada = {
         descricao: c.descricao,
         cartao: c.cartao || "",
         valor_parcela: c.valor_parcela,
-        parcela_inicio: c.parcela_inicio.slice(0, 7),
-        parcela_fim: c.parcela_fim.slice(0, 7),
+        dataCompra: c.data_compra || c.parcela_inicio,
+        parcelasQtd: qtd,
         grupo: c.grupo || "casal",
         observacao: c.observacao || "",
       };
+      this._cartaoParcelaSel = !c.cartao ? "" : this.cartoes.some((ct) => ct.nome === c.cartao) ? c.cartao : "__novo__";
       this.criandoParcelada = true;
+    },
+
+    // mês final calculado a partir do dia da compra + quantas parcelas — mostrado como
+    // conferência na tela (você não precisa saber/adivinhar o mês em que termina).
+    get previewFimParcelada() {
+      const f = this.formParcelada;
+      const qtd = Number(f.parcelasQtd);
+      if (!f.dataCompra || !qtd || qtd < 1) return null;
+      return this._somarMeses(f.dataCompra.slice(0, 7), qtd - 1);
     },
 
     async salvarParcelada() {
       const f = this.formParcelada;
-      if (!f.descricao || !f.valor_parcela || !f.parcela_inicio || !f.parcela_fim) return alert("Preencha descrição, valor da parcela, início e fim.");
+      const qtd = Number(f.parcelasQtd);
+      if (!f.descricao || !f.valor_parcela || !f.dataCompra || !qtd || qtd < 1) return alert("Preencha descrição, valor da parcela, dia da compra e quantas parcelas.");
+      const mesInicio = f.dataCompra.slice(0, 7);
       const payload = {
         descricao: f.descricao,
         cartao: f.cartao || null,
         valor_parcela: Number(f.valor_parcela),
-        parcela_inicio: f.parcela_inicio.length === 7 ? f.parcela_inicio + "-01" : f.parcela_inicio,
-        parcela_fim: f.parcela_fim.length === 7 ? f.parcela_fim + "-01" : f.parcela_fim,
+        data_compra: f.dataCompra,
+        parcela_inicio: mesInicio + "-01",
+        parcela_fim: this._somarMeses(mesInicio, qtd - 1) + "-01",
         grupo: f.grupo || "casal",
         observacao: f.observacao || null,
       };
