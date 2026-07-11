@@ -255,7 +255,7 @@
             <div x-show="resultadoImportacaoValor" class="text-xs bg-green-50 rounded-lg px-3 py-2 mb-3 space-y-1">
               <p class="text-green-800" x-text="resultadoImportacaoValor ? ('✅ ' + resultadoImportacaoValor.nome + ': valor de ' + resultadoImportacaoValor.nomeCompetencia + ' atualizado para ' + fmtMoeda(resultadoImportacaoValor.valor) + (resultadoImportacaoValor.valorAnterior ? ' (antes: ' + fmtMoeda(resultadoImportacaoValor.valorAnterior) + ')' : '') + ' — ' + resultadoImportacaoValor.origem + '.') : ''"></p>
               <p x-show="resultadoImportacaoValor && resultadoImportacaoValor.competencia !== mesFinanceiro" class="text-amber-700" x-text="resultadoImportacaoValor ? ('ℹ️ Entrou na competência ' + resultadoImportacaoValor.nomeCompetencia + ' (lida do documento), não no mês que você está vendo. Navegue até lá com ‹ ›.') : ''"></p>
-              <p x-show="resultadoImportacaoValor && resultadoImportacaoValor.parcelasDetectadas > 0" class="text-indigo-700" x-text="resultadoImportacaoValor ? ('🧾 ' + resultadoImportacaoValor.parcelasDetectadas + ' compra(s) parcelada(s) na aba Parceladas' + (resultadoImportacaoValor.parcelasNovas ? ' · ' + resultadoImportacaoValor.parcelasNovas + ' nova(s)' : '') + (resultadoImportacaoValor.parcelasAtualizadas ? ' · ' + resultadoImportacaoValor.parcelasAtualizadas + ' atualizada(s)' : '') + '. Confira e apague as que não fizerem sentido.') : ''"></p>
+              <p x-show="resultadoImportacaoValor && resultadoImportacaoValor.parcelasDetectadas > 0 && !previaParcelas" class="text-indigo-700" x-text="resultadoImportacaoValor ? ('🧾 ' + resultadoImportacaoValor.parcelasDetectadas + ' compra(s) parcelada(s) detectada(s)' + ((resultadoImportacaoValor.parcelasNovas || resultadoImportacaoValor.parcelasAtualizadas) ? (' · ' + resultadoImportacaoValor.parcelasNovas + ' nova(s) · ' + resultadoImportacaoValor.parcelasAtualizadas + ' atualizada(s)') : ' · revisão cancelada, nada foi salvo') + '. Confira a aba Parceladas.') : ''"></p>
             </div>
             <div class="divide-y">
               <template x-for="p in billPaymentsDoMes" :key="p.id">
@@ -437,7 +437,7 @@
               <h2 class="text-sm font-semibold text-gray-700">🧾 Compras parceladas no cartão</h2>
               <button @click="abrirNovaParcelada" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
             </div>
-            <p class="text-sm font-semibold text-gray-800 mb-1" x-text="'Total do mês (' + nomeMesFinanceiro + ', 3 grupos): ' + fmtMoeda(totalParceladasDoMes)"></p>
+            <p class="text-sm font-semibold text-gray-800 mb-1" x-text="'Total do mês (' + nomeMesFinanceiro + ', todos os grupos): ' + fmtMoeda(totalParceladasDoMes)"></p>
             <p class="text-xs text-gray-400 mb-3" x-text="parceladasComProgresso.filter(c => c.status === 'ativa').length + ' parcela(s) ativa(s) neste mês, de ' + comprasParceladas.length + ' cadastrada(s). Só aparecem as que estão correndo em ' + nomeMesFinanceiro + ' — as já quitadas somem.'"></p>
 
             <template x-for="g in gruposParcela" :key="g.key">
@@ -566,6 +566,7 @@
                 <option value="ricardo">Ricardo</option>
                 <option value="jessica">Jéssica</option>
                 <option value="casal">Casal (dos dois)</option>
+                <option value="novas" x-show="formParcelada.grupo === 'novas'">🆕 Novas (ainda não revisado)</option>
               </select>
               <label class="block text-xs text-gray-500">Nome como aparece no cartão/fatura (usado pra reconhecer no import)</label>
               <input type="text" placeholder="ex: MP*LOJA123, PAG*FULANO" x-model="formParcelada.descricao" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
@@ -583,6 +584,57 @@
         </div>
 
 
+
+        <!-- MODAL: prévia das parcelas detectadas no import (nada é gravado até confirmar) -->
+        <div x-show="previaParcelas" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div class="bg-white rounded-2xl shadow-lg w-full max-w-lg p-5 max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between mb-1">
+              <p class="font-semibold">🧾 Parcelas detectadas na fatura</p>
+              <button @click="cancelarPreviaParcelas()" class="text-gray-400">✕</button>
+            </div>
+            <p class="text-xs text-gray-500 mb-3">Revise antes de salvar. Nada foi gravado ainda.</p>
+
+            <div class="space-y-2 overflow-y-auto pr-1" style="flex:1;">
+              <template x-for="(item, idx) in (previaParcelas ? previaParcelas.itens : [])" :key="idx">
+                <div class="rounded-xl border px-3 py-2.5" :class="!item.incluir ? 'opacity-40 border-gray-200' : (item.tipo === 'atualizar' ? 'border-emerald-200 bg-emerald-50/50' : item.tipo === 'duvida' ? 'border-amber-200 bg-amber-50/50' : 'border-indigo-200 bg-indigo-50/40')">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <p class="font-medium text-sm truncate" x-text="item.descricao"></p>
+                      <p class="text-xs text-gray-500" x-text="'Parcela ' + item.atual + '/' + item.total + ' · ' + fmtMoeda(item.valor) + '/mês · início ' + fmtData(item.inicio)"></p>
+                    </div>
+                    <label class="flex items-center gap-1 text-[11px] text-gray-500 shrink-0">
+                      <input type="checkbox" x-model="item.incluir" />
+                      incluir
+                    </label>
+                  </div>
+
+                  <template x-if="item.tipo === 'atualizar'">
+                    <p class="text-[11px] mt-1.5 px-2 py-1 rounded-full inline-block bg-emerald-100 text-emerald-700">🔄 já cadastrada como "<span x-text="item.existenteLabel"></span>" — vai só atualizar valor/datas</p>
+                  </template>
+
+                  <template x-if="item.tipo === 'duvida'">
+                    <div class="mt-1.5">
+                      <label class="flex items-center gap-2 text-[11px] px-2 py-1 rounded-full w-fit" :class="item.vincular ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'">
+                        <input type="checkbox" x-model="item.vincular" />
+                        <span x-text="item.vincular ? ('🔗 é a mesma compra que \'' + item.existenteLabel + '\'')  : 'tratar como compra diferente (vai criar nova)'"></span>
+                      </label>
+                    </div>
+                  </template>
+
+                  <template x-if="item.tipo === 'nova'">
+                    <p class="text-[11px] mt-1.5 px-2 py-1 rounded-full inline-block bg-indigo-100 text-indigo-700">🆕 nova — vai pro grupo "Novas (revisar)" na aba Parceladas</p>
+                  </template>
+                </div>
+              </template>
+              <p x-show="previaParcelas && previaParcelas.itens.length === 0" class="text-xs text-gray-400 py-2">Nenhuma parcela detectada nesse documento.</p>
+            </div>
+
+            <div class="flex items-center gap-2 mt-3 pt-3 border-t">
+              <button @click="cancelarPreviaParcelas()" class="flex-1 rounded-xl py-2 text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button @click="confirmarPreviaParcelas()" class="flex-1 bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium">Confirmar e salvar</button>
+            </div>
+          </div>
+        </div>
 
         <!-- MODAL: nova/editar conta fixa -->
         <div x-show="criandoContaFixa" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" @click.self="criandoContaFixa = false; editandoContaFixa = null">

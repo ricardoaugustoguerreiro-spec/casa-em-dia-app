@@ -79,6 +79,7 @@ Alpine.data("appState", () => ({
     resultadoImportacao: null,
     alvoImportacaoFixos: "", // "cartao:<id>" ou "conta:<fixed_bill_id>" — pra onde vai o valor lido
     resultadoImportacaoValor: null,
+    previaParcelas: null, // { itens, cartaoNome, competencia } — revisão antes de gravar parcelas detectadas no import
     _pdfjs: null, // pdf.js carregado sob demanda (só quando sobe um PDF)
 
     // cartões da família (fatura mensal editável, dentro de Contas Fixas)
@@ -851,30 +852,91 @@ Alpine.data("appState", () => ({
       return [...map.values()];
     },
 
-    // Grava/atualiza na aba Parceladas as compras parceladas lidas do documento. Calcula
-    // 1ª e última parcela a partir da parcela atual + mês da fatura; casa com registro
-    // existente (mesma descrição+total) pra não duplicar ao re-subir. Devolve contagens.
-    async _sincronizarParcelas(parcelas, cartaoNome, mesCompetencia) {
-      let novas = 0, atualizadas = 0;
-      for (const p of parcelas) {
+    // Monta a PRÉVIA (sem gravar nada ainda) das parcelas detectadas no documento, pra você
+    // revisar antes de subir pro app. Cada parcela detectada vira um item classificado:
+    //  - "atualizar": já existe um cadastro com a MESMA descrição normalizada + total de
+    //    parcelas → só vai atualizar valor/datas (como sempre foi).
+    //  - "duvida": não bate a descrição, mas bate valor da parcela + total de parcelas +
+    //    mês de início — ou seja, é bem provável que seja a MESMA compra que você já
+    //    cadastrou manualmente com outro texto/observação. Por padrão vem marcado pra
+    //    VINCULAR (mesclar no cadastro existente); você pode destravar e tratar como
+    //    compra diferente ali mesmo na prévia.
+    //  - "nova": não bate com nada → vai criar um cadastro novo no grupo "Novas (revisar)",
+    //    sem chutar de quem é.
+    _prepararPreviaParcelas(parcelas, cartaoNome, mesCompetencia) {
+      const usadosNestaImportacao = new Set();
+      const itens = parcelas.map((p) => {
         const inicio = this._somarMeses(mesCompetencia, -(p.atual - 1)) + "-01";
         const fim = this._somarMeses(mesCompetencia, p.total - p.atual) + "-01";
         const chave = this._normParcelaDesc(p.descricao);
-        const existente = this.comprasParceladas.find((c) => {
+        const mesInicio = inicio.slice(0, 7);
+
+        const existentePorDescricao = this.comprasParceladas.find((c) => {
+          if (usadosNestaImportacao.has(c.id)) return false;
           const t = this.diffMeses(c.parcela_inicio.slice(0, 7), c.parcela_fim.slice(0, 7)) + 1;
           return this._normParcelaDesc(c.descricao) === chave && t === p.total;
         });
-        if (existente) {
-          const payload = { valor_parcela: p.valor, parcela_inicio: inicio, parcela_fim: fim };
+
+        let tipo, existente;
+        if (existentePorDescricao) {
+          tipo = "atualizar";
+          existente = existentePorDescricao;
+        } else {
+          existente = this.comprasParceladas.find((c) => {
+            if (usadosNestaImportacao.has(c.id)) return false;
+            const t = this.diffMeses(c.parcela_inicio.slice(0, 7), c.parcela_fim.slice(0, 7)) + 1;
+            return t === p.total && c.parcela_inicio.slice(0, 7) === mesInicio && Math.abs(Number(c.valor_parcela) - p.valor) < 0.01;
+          });
+          tipo = existente ? "duvida" : "nova";
+        }
+        if (existente) usadosNestaImportacao.add(existente.id);
+
+        return {
+          descricao: p.descricao,
+          atual: p.atual,
+          total: p.total,
+          valor: p.valor,
+          inicio,
+          fim,
+          tipo,
+          existenteId: existente ? existente.id : null,
+          existenteLabel: existente ? existente.observacao || existente.descricao : "",
+          vincular: tipo === "duvida", // pré-marcado: "é a mesma compra" — destravável na prévia
+          incluir: true,
+        };
+      });
+      return { itens, cartaoNome: cartaoNome || null, competencia: mesCompetencia };
+    },
+
+    // Executa o que foi decidido na prévia: grava no Supabase só o que ficou marcado
+    // "incluir". Itens "atualizar" e "duvida vinculada" atualizam o cadastro existente;
+    // "nova" e "duvida não vinculada" criam um cadastro novo no grupo "novas" (revisar).
+    async confirmarPreviaParcelas() {
+      if (!this.previaParcelas) return;
+      const { itens, cartaoNome } = this.previaParcelas;
+      let novas = 0, atualizadas = 0;
+      for (const item of itens) {
+        if (!item.incluir) continue;
+        const vaiAtualizar = item.tipo === "atualizar" || (item.tipo === "duvida" && item.vincular);
+        if (vaiAtualizar && item.existenteId) {
+          const existente = this.comprasParceladas.find((c) => c.id === item.existenteId);
+          if (!existente) continue;
+          const payload = { valor_parcela: item.valor, parcela_inicio: item.inicio, parcela_fim: item.fim };
           const { error } = await supabase.from("compras_parceladas").update(payload).eq("id", existente.id);
           if (!error) { Object.assign(existente, payload); atualizadas++; }
         } else {
-          const nova = { descricao: p.descricao, cartao: cartaoNome || null, valor_parcela: p.valor, parcela_inicio: inicio, parcela_fim: fim, grupo: this._meuGrupo(), created_by: this.uid };
+          const nova = { descricao: item.descricao, cartao: cartaoNome, valor_parcela: item.valor, parcela_inicio: item.inicio, parcela_fim: item.fim, grupo: "novas", created_by: this.uid };
           const { data, error } = await supabase.from("compras_parceladas").insert(nova).select().single();
           if (!error && data) { this.comprasParceladas.push(data); novas++; }
         }
       }
+      this.previaParcelas = null;
+      if (this.resultadoImportacaoValor) this.resultadoImportacaoValor = { ...this.resultadoImportacaoValor, parcelasNovas: novas, parcelasAtualizadas: atualizadas };
       return { novas, atualizadas };
+    },
+
+    cancelarPreviaParcelas() {
+      this.previaParcelas = null;
     },
 
     // ===================== IMPORTAR VALOR (Compromissos fixos: cartão OU conta) =====================
@@ -942,12 +1004,16 @@ Alpine.data("appState", () => ({
           nome = this.billName(id);
         }
 
-        // separa o que está parcelado e joga na aba Parceladas (sem duplicar ao re-subir),
-        // usando a MESMA competência detectada pra calcular 1ª/última parcela.
+        // separa o que está parcelado e monta a PRÉVIA (nada é gravado ainda) pra você
+        // revisar — em especial confirmar se o que parece "novo" já não é uma compra que
+        // você cadastrou manualmente com outro nome, usando a MESMA competência detectada
+        // pra calcular 1ª/última parcela.
         const parcelas = this._detectarParcelas(linhas, delim, ehPdf);
-        const { novas, atualizadas } = await this._sincronizarParcelas(parcelas, tipo === "cartao" ? nome : null, competencia);
 
-        this.resultadoImportacaoValor = { nome, tipo, valor: total, valorAnterior, origem, qtdItens, competencia, nomeCompetencia: this.nomeMes(competencia), parcelasDetectadas: parcelas.length, parcelasNovas: novas, parcelasAtualizadas: atualizadas };
+        this.resultadoImportacaoValor = { nome, tipo, valor: total, valorAnterior, origem, qtdItens, competencia, nomeCompetencia: this.nomeMes(competencia), parcelasDetectadas: parcelas.length, parcelasNovas: 0, parcelasAtualizadas: 0 };
+        if (parcelas.length > 0) {
+          this.previaParcelas = this._prepararPreviaParcelas(parcelas, tipo === "cartao" ? nome : null, competencia);
+        }
       } catch (e) {
         alert("Erro ao importar: " + e.message);
       } finally {
@@ -1202,13 +1268,14 @@ Alpine.data("appState", () => ({
         .sort((a, b) => a.parcela_inicio.localeCompare(b.parcela_inicio));
     },
 
-    // parcelas separadas em 3 grupos (Ricardo / Jéssica / Casal), cada um com seu total do mês
+    // parcelas separadas em grupos (Ricardo / Jéssica / Casal / Novas a revisar), cada um com seu total do mês
     get gruposParcela() {
       const mes = this.mesFinanceiro;
       const defs = [
         { key: "ricardo", nome: "Ricardo", header: "text-indigo-700", dot: "bg-indigo-500", card: "border-l-4 border-indigo-300 bg-indigo-50/40", badge: "bg-indigo-100 text-indigo-700" },
         { key: "jessica", nome: "Jéssica", header: "text-pink-700", dot: "bg-pink-500", card: "border-l-4 border-pink-300 bg-pink-50/40", badge: "bg-pink-100 text-pink-700" },
         { key: "casal", nome: "Casal", header: "text-emerald-700", dot: "bg-emerald-500", card: "border-l-4 border-emerald-300 bg-emerald-50/40", badge: "bg-emerald-100 text-emerald-700" },
+        { key: "novas", nome: "🆕 Novas (revisar)", header: "text-amber-700", dot: "bg-amber-500", card: "border-l-4 border-amber-300 bg-amber-50/60", badge: "bg-amber-100 text-amber-700" },
       ];
       // só as parcelas ATIVAS no mês selecionado (inicia ≤ mês ≤ fim). Parcelas que já
       // quitaram em meses anteriores NÃO aparecem aqui — não são levadas pra frente.
