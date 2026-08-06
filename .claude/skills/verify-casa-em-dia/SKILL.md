@@ -126,15 +126,14 @@ O que sobrou de propósito:
 
 Se um dia for pra religar, o caminho está no histórico do git (commit da remoção) — não reimplemente do zero.
 
-### 15. Toda tabela nova no Supabase precisa entrar na lista de backup (lição #12)
-Sempre que um `migration_*.sql` deste projeto rodar `create table public.X`, atualize NO MESMO MOMENTO a lista de tabelas em `C:\Users\ricar\.claude\scheduled-tasks\backup-casa-em-dia\SKILL.md` — em 22/06/2026 a tarefa rodou normalmente (`lastRunAt` registrado) mas não escreveu arquivo nenhum no disco porque a lista de tabelas estava desatualizada, e isso passou em branco até alguém perguntar. Checklist rápido:
-```bash
-grep -A3 "Para cada uma destas tabelas" "C:\Users\ricar\.claude\scheduled-tasks\backup-casa-em-dia\SKILL.md"
-# compare com as tabelas reais:
-SECFILE="H:\Meu Drive\FINANÇAS\Casa-em-Dia-App\_segredos-nao-compartilhar\supabase.txt"
-grep -h "create table" "H:\Meu Drive\FINANÇAS\Casa-em-Dia-App\supabase\"*.sql
-```
-E depois de qualquer execução (manual ou agendada) do backup, **confirme no disco** que o arquivo do dia foi criado e tem tamanho > 0 — "a tarefa rodou sem erro" não é o mesmo que "o arquivo existe".
+### 15. ⛔ Backup automático REMOVIDO do repositório (06/08/2026) — decisão informada do Ricardo
+`scripts/backup_casa_em_dia.py` e `.github/workflows/backup.yml` foram apagados. O workflow vinha falhando todo dia (secret `DB_PASSWORD` vazia → o script caía no arquivo `_segredos-nao-compartilhar/supabase.txt`, que está no `.gitignore` e não existe no runner). Ricardo foi informado de que esse era o **único backup completo** e mesmo assim optou por excluir em vez de consertar.
+
+**Estado real da proteção de dados hoje — não presuma que existe backup confiável:**
+- Sobra só um snapshot na pasta `H:\Meu Drive\FINANÇAS\Backups\`, gerado por um mecanismo externo a este repo, que cobre **9 das 19 tabelas** e uma fração das linhas (medido em 06/08: 19 de 268 `transactions`, 42 de 252 `bill_payments`, 0 de 9 `events`; `faturas_cartao`, `compras_parceladas`, `cartoes`, `dia_a_dia`, `tarefas_joias`, `registros_intimos`, `dias_menstruacao` ficam **de fora**).
+- Os arquivos de 11/Jul e 06/Ago têm contagens idênticas — esse snapshot não acompanha o crescimento do banco.
+
+Se o assunto voltar (perda de dados, migration arriscada, "cadê o backup"), diga isso explicitamente antes de qualquer operação destrutiva no banco. Não reintroduza o backup sem ele pedir.
 
 ### 20. Motor de verificação automática (verificar.yml + verificar_sistema.py)
 Todo dia às 09h Brasília, `verificar_sistema.py` roda via GitHub Actions e checa:
@@ -142,7 +141,7 @@ Todo dia às 09h Brasília, `verificar_sistema.py` roda via GitHub Actions e che
 - Secrets `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` presentes
 - Contas fixas pendentes nos próximos 7 dias (consistência de dados)
 - Se encontrar erro: abre GitHub Issue automaticamente (label `auto-verificacao`)
-Depois da remoção das notificações (06/08/2026) este é o **único** workflow agendado além do backup — o `notificar.yml` não existe mais.
+Depois da remoção das notificações e do backup (06/08/2026), este é o **único** workflow agendado do repositório — `notificar.yml` e `backup.yml` não existem mais.
 
 ## Depois de verificar: o relatório
 
