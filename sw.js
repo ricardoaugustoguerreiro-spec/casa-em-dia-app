@@ -1,4 +1,4 @@
-const CACHE = "casa-em-dia-v31";
+const CACHE = "casa-em-dia-v32";
 const ASSETS = [
   "./manifest.json",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-180.png",
@@ -41,56 +41,6 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// ===================== NOTIFICAÇÕES PUSH =====================
-
-self.addEventListener("push", (event) => {
-  let dados = { title: "Casa em Dia", body: "Você tem uma novidade no app." };
-  if (event.data) {
-    try {
-      dados = event.data.json();
-    } catch (e) {
-      dados.body = event.data.text();
-    }
-  }
-  event.waitUntil(
-    self.registration.showNotification(dados.title || "Casa em Dia", {
-      body: dados.body || "",
-      icon: "icons/icon-192.png",
-      badge: "icons/icon-192.png",
-      actions: dados.actions || [],
-      data: { url: dados.url || "./index.html", semGastoUrl: dados.semGastoUrl || null, eventoId: dados.eventoId || null },
-    })
-  );
-});
-
-// Notificação "teve gasto hoje?" tem 2 botões: "Sim" abre a tela rápida de
-// lançamento (quickadd.html), "Não" só fecha — sem abrir nada, sem digitar
-// nada (Web Push não permite texto inline na notificação, nem no Android).
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  if (event.action === "nao_tive") return; // só fecha, não abre nada
-
-  if (event.action === "silenciar_evento") {
-    const eventoId = event.notification.data?.eventoId;
-    const url = `./index.html?silenciar_evento=${eventoId}`;
-    event.waitUntil(
-      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-        for (const client of clients) {
-          if ("focus" in client) { client.navigate(url); return client.focus(); }
-        }
-        return self.clients.openWindow(url);
-      })
-    );
-    return;
-  }
-
-  const url = event.action === "tive_gasto" ? "./quickadd.html" : event.notification.data?.url || "./index.html";
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client && client.url.includes(url.replace("./", ""))) return client.focus();
-      }
-      return self.clients.openWindow(url);
-    })
-  );
-});
+// Notificações push foram removidas do app (06/08/2026) — este service worker
+// cuida só do cache offline. Se um push antigo chegar de alguma assinatura que
+// ainda não expirou, não há handler: o navegador ignora e nada é exibido.

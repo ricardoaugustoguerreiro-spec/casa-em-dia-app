@@ -957,26 +957,6 @@
           <button @click="logout" class="mt-4 text-sm text-gray-500 hover:text-rose-600">↩ Sair da conta</button>
         </section>
 
-        <!-- NOTIFICAÇÕES -->
-        <section class="bg-white rounded-2xl shadow-sm p-4">
-          <h2 class="text-sm font-semibold text-gray-700 mb-2">Notificações</h2>
-          <p class="text-xs text-gray-500 mb-3">
-            Status:
-            <span x-show="notificacaoStatus === 'granted'" class="font-medium text-green-700">ativadas</span>
-            <span x-show="notificacaoStatus === 'denied'" class="font-medium text-red-600">bloqueadas pelo navegador</span>
-            <span x-show="notificacaoStatus === 'default'" class="font-medium text-gray-700">não ativadas ainda</span>
-            <span x-show="notificacaoStatus === 'unsupported'" class="font-medium text-gray-700">não suportadas nesse navegador</span>
-          </p>
-          <button x-show="notificacaoStatus === 'default'" @click="ativarNotificacoes" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Ativar notificações</button>
-          <p x-show="notificacaoStatus === 'denied'" class="text-xs text-gray-400">Pra reativar, mude a permissão de notificações desse site nas configurações do navegador/celular.</p>
-          <p x-show="notificacaoStatus === 'unsupported'" class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mt-1">
-            Se você abriu esse link de dentro do WhatsApp/Instagram, é por isso — o navegador embutido desses apps não suporta notificação. Copie o link e abra direto no Chrome (ou use o atalho/QR code), depois instale o app pelo menu do Chrome.
-          </p>
-          <p class="text-xs text-gray-400 mt-3">
-            Pra receber notificações fora do app, instale o Casa em Dia na tela inicial do celular (no Android/Chrome: menu → "Instalar aplicativo"; no iPhone/Safari: compartilhar → "Adicionar à Tela de Início").
-          </p>
-        </section>
-
         <!-- DESBLOQUEIO POR BIOMETRIA -->
         <section class="bg-white rounded-2xl shadow-sm p-4">
           <h2 class="text-sm font-semibold text-gray-700 mb-2">🔒 Desbloqueio por Face ID / digital</h2>

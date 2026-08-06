@@ -116,30 +116,15 @@ Alpine engole erro de sintaxe numa expressão e simplesmente não aplica o bindi
 2. Suba o app no preview local (`H:\Meu Drive\FINANÇAS\.claude\launch.json`) e cheque `console_logs` nível warn/error — não confie só em screenshot, esse tipo de bug não aparece visualmente até você comparar com/sem a correção lado a lado.
 3. Se o preview ficar travado/servindo 404 sem motivo aparente, é processo python órfão de uma sessão anterior — mate por PID (porta 8731) e chame `preview_start` de novo, não é bug do app.
 
-### 16. `notificar.py`: toda tabela consultada deve existir no banco antes do deploy (lições #14)
-O script usa `r.raise_for_status()` dentro da função `rest()` — se qualquer tabela consultada não existir, o script inteiro crasha (PostgREST devolve 404/400). Em 29/06/2026 a tabela `eventos_silenciados` estava sendo consultada mas nunca tinha sido criada, derrubando o script antes de chegar na pergunta diária. Nenhuma notificação chegava, mas o GitHub Actions marcava a execução como "sucesso" (porque o erro é de runtime, não de sintaxe do workflow).
+### 16. Notificações push foram REMOVIDAS do app (06/08/2026) — a pedido do Ricardo
+Não existe mais `scripts/notificar.py`, nem o workflow `notificar.yml`, nem handler de `push`/`notificationclick` no `sw.js`, nem seção "Notificações" nos Ajustes, nem `VAPID_PUBLIC_KEY` no `config.js`. As lições antigas #16-#19 e #21 (tabelas do notificar.py, turnos da pergunta diária, anti-burst `urgente=`, horários de calendário) **não se aplicam mais** — se aparecerem em `lessons.md`, são histórico, não checklist.
 
-Checklist rápido (rodar depois de qualquer mudança em `notificar.py`):
-```bash
-# Extrai todas as tabelas consultadas pelo notificar.py
-grep -oP '(?<=rest\(url, key, ")[^"]+' scripts/notificar.py
-# Compare manualmente com:
-cat supabase/migrations_aplicadas.txt
-# Tabelas conhecidas que não têm migration própria (criadas em migration.sql principal):
-# events, fixed_bills, bill_payments, transactions, profiles, categories
-# Se qualquer tabela da lista grep não estiver em migrations_aplicadas.txt nem no migration.sql principal: CRIE A MIGRATION E APLIQUE.
-```
+O que sobrou de propósito:
+- Tabelas `push_subscriptions`, `notificacoes_enviadas` e `eventos_silenciados` continuam no Supabase (não foram dropadas), mas ninguém escreve nem lê nelas.
+- As secrets `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT` continuam no repositório do GitHub, sem uso.
+- `quickadd.html` continua existindo como página de lançamento rápido acessível por URL direta — só perdeu o botão da notificação que abria ela.
 
-### 17. Pergunta diária "Teve gasto?" deve disparar 2x por dia (lição #15)
-O script usa a lista `TURNOS` com dois horários (12h e 20h, chaves `pergunta_gasto_manha` e `pergunta_gasto_noite`). Se alguém editar e deixar só 1 entrada, ou usar a chave antiga `pergunta_gasto:{hoje}` sem sufixo, volta pra 1 pergunta por dia.
-```bash
-grep -A3 "TURNOS" scripts/notificar.py
-# Deve ter 2 entradas: uma pra 12 ("manha") e uma pra 20 ("noite")
-```
-
-### 18. Idempotência de push é por chave, não por (chave, subscription) — ponto frágil documentado
-O script usa `any(enviar_push(...) for s in subs)` e marca a chave como "enviada" se ao menos 1 dispositivo recebeu com sucesso. Se o dispositivo A recebe mas o dispositivo B falha, a chave é marcada e o dispositivo B nunca mais recebe aquela notificação — sem retry. Isso é um tradeoff consciente (evitar spam duplicado) mas tem custo: um dispositivo pode ficar silencioso para eventos específicos sem aviso.
-Documentado como limitação conhecida em `relatorio-monitoramento-notificacoes.md`. Não é um bug que impede o funcionamento, mas deve ser considerado se ambos os celulares reportarem "não recebi" para o mesmo evento.
+Se um dia for pra religar, o caminho está no histórico do git (commit da remoção) — não reimplemente do zero.
 
 ### 15. Toda tabela nova no Supabase precisa entrar na lista de backup (lição #12)
 Sempre que um `migration_*.sql` deste projeto rodar `create table public.X`, atualize NO MESMO MOMENTO a lista de tabelas em `C:\Users\ricar\.claude\scheduled-tasks\backup-casa-em-dia\SKILL.md` — em 22/06/2026 a tarefa rodou normalmente (`lastRunAt` registrado) mas não escreveu arquivo nenhum no disco porque a lista de tabelas estava desatualizada, e isso passou em branco até alguém perguntar. Checklist rápido:
@@ -151,34 +136,13 @@ grep -h "create table" "H:\Meu Drive\FINANÇAS\Casa-em-Dia-App\supabase\"*.sql
 ```
 E depois de qualquer execução (manual ou agendada) do backup, **confirme no disco** que o arquivo do dia foi criado e tem tamanho > 0 — "a tarefa rodou sem erro" não é o mesmo que "o arquivo existe".
 
-### 19. Notificações novas devem ser informativas (urgente=False) por padrão (lição #16)
-Toda chamada a `enviar_pra_lista` que for para notificação informativa (agenda do dia, preview de amanhã, pergunta de gasto, pergunta do calendário, resumo semanal) deve usar `urgente=False` (que é o padrão). Só usar `urgente=True` para eventos que não podem esperar 15 min: conta vencendo, fatura vencendo, conflito financeiro, lembrete de evento em breve, conflito de agenda.
-```bash
-grep "urgente=True" scripts/notificar.py
-# Deve aparecer SÓ nessas 5 linhas (contas, faturas, conflito financeiro, evento, conflito agenda).
-# Qualquer outra linha com urgente=True é regressão desta lição.
-grep "urgente=False\|enviar_pra_lista" scripts/notificar.py | grep -v "urgente=True\|def enviar"
-# Essas linhas devem ser as informativas: agenda_hoje, agenda_amanha, calendario_jessica,
-# resumo_semana, pergunta_gasto — sem urgente=True
-```
-
 ### 20. Motor de verificação automática (verificar.yml + verificar_sistema.py)
 Todo dia às 09h Brasília, `verificar_sistema.py` roda via GitHub Actions e checa:
-- Tabelas do notificar.py existem no banco
-- Subscriptions ativas (alerta se 0)
-- Última notificação enviada (alerta se > 26h)
-- Perguntas de gasto (manha/noite) enviadas hoje
-- Notificações de calendário (agenda_hoje, agenda_amanha, calendario_jessica) enviadas hoje
+- Todas as tabelas que o app consulta existem no banco (lista `TABELAS_BANCO`)
+- Secrets `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` presentes
+- Contas fixas pendentes nos próximos 7 dias (consistência de dados)
 - Se encontrar erro: abre GitHub Issue automaticamente (label `auto-verificacao`)
-Não confundir com o `notificar.yml` (roda a cada 15min, envia os pushs). São dois workflows diferentes.
-
-### 21. Notificações de calendário — horários e privacidade
-- **08h Brasília**: resumo do dia para cada pessoa individualmente (respeita `conjunto` e `owner_id`)
-- **08h segunda-feira**: resumo semanal dos próximos 7 dias
-- **19h**: preview de amanhã para cada pessoa
-- **21h**: pergunta só para Jéssica (filtrada por `role=membro`)
-- **a cada hora**: lembrete de evento chegando nas próximas 24h (urgente=True)
-A lógica de privacidade usa `quem_ve(owner_id, conjunto)` e `eventos_visiveis(uid, lista)` — nunca hardcode de uid. O uid da Jéssica é lido dinamicamente do banco via `role=membro`.
+Depois da remoção das notificações (06/08/2026) este é o **único** workflow agendado além do backup — o `notificar.yml` não existe mais.
 
 ## Depois de verificar: o relatório
 
