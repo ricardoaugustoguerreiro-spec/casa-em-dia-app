@@ -1,4 +1,4 @@
-const CACHE = "casa-em-dia-v45";
+const CACHE = "casa-em-dia-v46";
 const ASSETS = [
   "./manifest.json",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-180.png",
@@ -46,7 +46,11 @@ self.addEventListener("fetch", (event) => {
       caches.match(event.request).then((cached) => {
         const daRede = fetch(event.request)
           .then((res) => {
-            if (res && res.ok) {
+            // O <script> do Tailwind vem de outro dominio sem CORS: a resposta
+            // e "opaca" (status 0, res.ok falso) mas serve perfeitamente para
+            // executar. Sem esta segunda condicao, o Tailwind nunca era guardado
+            // e o app abria offline sem estilo nenhum.
+            if (res && (res.ok || res.type === "opaque")) {
               const copia = res.clone();
               caches.open(CACHE).then((cache) => cache.put(event.request, copia));
             }
