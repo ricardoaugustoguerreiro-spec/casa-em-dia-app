@@ -378,8 +378,14 @@
                 <button @click="abrirNovaContaFixa" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
               </div>
             </div>
-            <p class="text-xs text-gray-500 mb-2">Pra atualizar um valor pela fatura/extrato: escolha o <b>cartão</b> ou a <b>conta</b> no seletor acima e suba o CSV/PDF do banco. O app lê o total e grava nesse item, no mês selecionado. Pode subir a mesma fatura várias vezes — ele só regrava, sem duplicar.</p>
-            <p class="text-sm font-semibold text-gray-800 mb-3" x-text="'Total do mês (contas fixas + cartões): ' + fmtMoeda(totalContasFixasDoMes + totalFaturasCartaoDoMes)"></p>
+            <details class="mb-2">
+              <summary class="text-sm text-gray-600 cursor-pointer select-none">Como atualizar um valor pela fatura do banco</summary>
+              <p class="text-sm text-gray-600 mt-2">Escolha o <b>cartão</b> ou a <b>conta</b> no seletor acima e suba o CSV/PDF do banco. O app lê o total e grava nesse item, no mês selecionado. Pode subir a mesma fatura várias vezes — ele só regrava, sem duplicar.</p>
+            </details>
+            <div class="mb-4 pb-3 border-b border-gray-200">
+              <p class="text-sm text-gray-500">Total do mês, contas fixas e cartões</p>
+              <p class="text-2xl font-bold tracking-tight text-gray-900" x-text="fmtMoeda(totalContasFixasDoMes + totalFaturasCartaoDoMes)"></p>
+            </div>
             <div x-show="resultadoImportacaoValor" class="text-xs bg-green-50 rounded-lg px-3 py-2 mb-3 space-y-1">
               <p class="text-green-800" x-text="resultadoImportacaoValor ? ('✅ ' + resultadoImportacaoValor.nome + ': valor de ' + resultadoImportacaoValor.nomeCompetencia + ' atualizado para ' + fmtMoeda(resultadoImportacaoValor.valor) + (resultadoImportacaoValor.valorAnterior ? ' (antes: ' + fmtMoeda(resultadoImportacaoValor.valorAnterior) + ')' : '') + ' — ' + resultadoImportacaoValor.origem + '.') : ''"></p>
               <p x-show="resultadoImportacaoValor && resultadoImportacaoValor.competencia !== mesFinanceiro" class="text-amber-700" x-text="resultadoImportacaoValor ? ('ℹ️ Entrou na competência ' + resultadoImportacaoValor.nomeCompetencia + ' (lida do documento), não no mês que você está vendo. Navegue até lá com ‹ ›.') : ''"></p>
@@ -388,13 +394,14 @@
             <div class="divide-y">
               <template x-for="p in billPaymentsDoMes" :key="p.id">
                 <div class="flex items-center justify-between gap-2 py-3 flex-wrap">
-                  <div class="min-w-0">
-                    <p class="font-medium flex items-center gap-2 flex-wrap">
-                      <span x-text="billName(p.fixed_bill_id)"></span>
-                      <span class="text-[11px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(p.status)" x-text="p.status"></span>
-                    </p>
-                    <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(p.due_date) + ' · ' + fmtMoeda(p.amount)"></p>
-                    <p x-show="p.status === 'pago' && p.paid_at" class="text-xs text-green-600 font-medium" x-text="'✓ Pago em ' + fmtData(p.paid_at.slice(0,10))"></p>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <p class="font-medium truncate" x-text="billName(p.fixed_bill_id)"></p>
+                      <p class="font-semibold shrink-0" x-text="fmtMoeda(p.amount)"></p>
+                    </div>
+                    <span class="inline-block mt-1 text-[11px] px-2 py-0.5 rounded-full font-medium"
+                          :class="p.status === 'pago' ? 'bg-green-50 text-green-700' : estadoDaConta(p.due_date).classe"
+                          x-text="p.status === 'pago' ? (p.paid_at ? 'Pago em ' + fmtData(String(p.paid_at).slice(0,10)) : 'Pago') : estadoDaConta(p.due_date).rotulo"></span>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarPago(p)" class="text-xs px-3 py-1.5 rounded-full border" :class="p.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="p.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
@@ -422,7 +429,7 @@
                       <span x-show="alertaLimiteCartao(f) === 'perto'" class="text-[11px] px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700">⚠️ perto do limite</span>
                     </p>
                     <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(f.due_date) + ' · ' + fmtMoeda(f.amount) + (percentualLimiteCartao(f) !== null ? ' · ' + Math.round(percentualLimiteCartao(f)*100) + '% do limite' : '')"></p>
-                    <p x-show="f.status === 'pago' && f.paid_at" class="text-xs text-green-600 font-medium" x-text="'✓ Pago em ' + fmtData(f.paid_at.slice(0,10))"></p>
+                    <p x-show="f.status === 'pago' && f.paid_at" class="text-xs text-green-600 font-medium" x-text="'Pago em ' + fmtData(String(f.paid_at || '').slice(0,10))"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarFaturaPaga(f)" class="text-xs px-3 py-1.5 rounded-full border" :class="f.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="f.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
@@ -715,7 +722,7 @@
               <input type="date" x-model="formParcelada.dataCompra" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <label class="block text-xs text-gray-500">Quantas parcelas</label>
               <input type="number" inputmode="numeric" min="1" step="1" placeholder="ex: 10" x-model="formParcelada.parcelasQtd" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
-              <p x-show="previewFimParcelada" class="text-xs text-gray-400" x-text="'termina em ' + nomeMes(previewFimParcelada)"></p>
+              <p x-show="previewFimParcelada" class="text-xs text-gray-500" x-text="previewFimParcelada ? 'termina em ' + nomeMes(previewFimParcelada) : ''"></p>
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
           </div>

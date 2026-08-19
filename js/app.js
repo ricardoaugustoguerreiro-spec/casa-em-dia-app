@@ -1598,7 +1598,9 @@ Alpine.data("appState", () => ({
     },
 
     nomeMes(mesISO) {
-      const [y, m] = mesISO.split("-").map(Number);
+      if (!mesISO) return "—";
+      const [y, m] = String(mesISO).split("-").map(Number);
+      if (!y || !m) return "—";
       return `${this.nomesMeses[m - 1]} de ${y}`;
     },
 
