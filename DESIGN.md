@@ -62,7 +62,11 @@ Regras não negociáveis:
 
 ## Tipografia
 
-Uma família (system-ui) em pesos variados — sem par de fontes.
+Uma família só (a fonte do próprio sistema: `system-ui`, `-apple-system`, `Segoe UI`, `Roboto`),
+em pesos variados. **Decisão consciente, não descuido:** é um app de consulta rápida no celular,
+aberto dezenas de vezes por dia. Fonte de fora custa carregamento e pisca na primeira abertura;
+a fonte do sistema aparece instantânea e já é a letra que a pessoa lê o dia inteiro no aparelho.
+A hierarquia vem de tamanho, peso e cor — não de um segundo tipo.
 
 | Papel | Tamanho | Peso | Cor |
 |---|---|---|---|

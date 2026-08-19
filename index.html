@@ -179,7 +179,7 @@
   <!-- TELA DE BLOQUEIO: sessão já restaurada, esperando Face ID/digital -->
   <div x-show="view === 'app' && bloqueado" x-cloak class="flex items-center justify-center min-h-screen p-4">
     <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm p-6 text-center">
-      <div class="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold mx-auto mb-3" :style="'background-color: ' + (profile?.color || '#7c3aed')" x-text="(profile?.display_name || 'C').charAt(0).toUpperCase()"></div>
+      <div class="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold mx-auto mb-3" :style="'background-color: ' + (profile?.color || '#B94E33')" x-text="(profile?.display_name || 'C').charAt(0).toUpperCase()"></div>
       <h1 class="text-base font-semibold mb-1">Casa em Dia bloqueado</h1>
       <p class="text-xs text-gray-500 mb-5">Confirme com Face ID, digital ou a tela de desbloqueio do aparelho pra continuar.</p>
       <button @click="desbloquear" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-3 text-sm font-medium">🔓 Desbloquear</button>
@@ -191,7 +191,7 @@
   <div x-show="view === 'app' && !bloqueado" x-cloak class="mx-auto p-3 sm:p-4 pb-16" :class="(abaAtual === 'financeiro' && abaFinanceiro === 'visao_geral') ? 'max-w-7xl' : 'max-w-5xl'">
     <header class="flex flex-wrap items-center justify-between gap-2 py-4">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" :style="'background-color: ' + (profile?.color || '#7c3aed')" x-text="(profile?.display_name || 'C').charAt(0).toUpperCase()"></div>
+        <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" :style="'background-color: ' + (profile?.color || '#B94E33')" x-text="(profile?.display_name || 'C').charAt(0).toUpperCase()"></div>
         <div>
           <h1 class="text-lg font-bold leading-tight">Casa em Dia</h1>
           <p class="text-xs text-gray-500" x-text="profile ? (profile.display_name + (isAdmin ? ' (admin)' : '')) : ''"></p>
@@ -199,12 +199,13 @@
       </div>
     </header>
 
-    <div class="flex bg-gray-100 rounded-full p-1 mb-5 max-w-lg">
+    <nav aria-label="Seções do app" class="flex bg-gray-100 rounded-full p-1 mb-5 max-w-lg">
       <button @click="abaAtual='painel'" :class="abaAtual==='painel' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Painel</button>
       <button @click="abaAtual='financeiro'" :class="abaAtual==='financeiro' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Financeiro</button>
       <button @click="abaAtual='calendario'; abrirCalendario()" :class="abaAtual==='calendario' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Calendário</button>
-      <button @click="abaAtual='ajustes'" :class="abaAtual==='ajustes' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Ajustes</button>
-    </div>
+      <button @click="abaAtual='ajustes'" :aria-current="abaAtual==='ajustes' ? 'page' : false" :class="abaAtual==='ajustes' ? 'bg-white shadow text-gray-900' : 'text-gray-500'" class="flex-1 rounded-full py-2 text-sm font-medium transition">Ajustes</button>
+    </nav>
+    <main>
 
     <!-- PAINEL DE TAREFAS (dashboard pessoal) -->
     <template x-if="!loadingData && abaAtual === 'painel'">
@@ -371,7 +372,7 @@
             <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
               <h2 class="text-sm font-semibold text-gray-700">Contas fixas</h2>
               <div class="flex items-center gap-2 flex-wrap justify-end">
-                <select x-model="alvoImportacaoFixos" class="rounded-lg border border-gray-200 px-2 py-1.5 text-xs max-w-[55%]">
+                <select aria-label="Escolha o cartão ou a conta para atualizar o valor" x-model="alvoImportacaoFixos" class="rounded-lg border border-gray-200 px-2 py-1.5 text-xs max-w-[55%]">
                   <option value="">Atualizar valor de…</option>
                   <template x-for="c in cartoes" :key="'c'+c.id"><option :value="'cartao:'+c.id" x-text="'💳 ' + c.nome"></option></template>
                   <template x-for="b in fixedBills.filter(b => b.active !== false)" :key="'b'+b.id"><option :value="'conta:'+b.id" x-text="'📄 ' + b.name"></option></template>
@@ -638,7 +639,7 @@
               <span class="text-[11px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-500">Somente consulta</span>
             </div>
             <p class="text-sm text-gray-600 mb-1">Toque numa célula (ou arraste por várias) pra somar. Toque na categoria pra recolher. Esta tela só mostra — quem manda são Compromissos fixos e os cartões.</p>
-            <p class="text-xs text-gray-400 mb-3 flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block shrink-0"></span>Verde = já pago</p>
+            <p class="text-sm text-gray-600 mb-3 flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block shrink-0"></span>Verde = já pago</p>
 
             <div class="flex items-center justify-between mb-3 bg-gray-50 rounded-2xl px-2 py-2" style="max-width:180px;">
               <button @click="anoVisaoGeralAnterior()" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
@@ -1097,11 +1098,11 @@
           <form @submit.prevent="salvarPerfil" class="flex flex-wrap items-end gap-3">
             <div class="flex-1 min-w-[160px]">
               <label class="block text-xs text-gray-500 mb-1">Nome de exibição</label>
-              <input type="text" x-model="formPerfil.display_name" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" aria-label="Seu nome" x-model="formPerfil.display_name" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">Cor</label>
-              <input type="color" x-model="formPerfil.color" class="w-14 h-10 rounded-lg border border-gray-200" />
+              <input type="color" aria-label="Cor do seu perfil" x-model="formPerfil.color" class="w-14 h-10 rounded-lg border border-gray-200" />
             </div>
             <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Salvar</button>
           </form>
@@ -1157,13 +1158,13 @@
           <h2 class="text-sm font-semibold text-gray-700 mb-3">Categorias</h2>
           <form @submit.prevent="salvarCategoria" class="flex flex-wrap items-end gap-2 mb-3">
             <input type="text" placeholder="Nome da categoria" x-model="formCategoria.name" required class="flex-1 min-w-[140px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
-            <select x-model="formCategoria.kind" class="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <select aria-label="Tipo da categoria" x-model="formCategoria.kind" class="rounded-lg border border-gray-200 px-3 py-2 text-sm">
               <option value="variavel">Variável</option>
               <option value="fixa">Fixa</option>
               <option value="diaria">Diária</option>
               <option value="renda">Renda</option>
             </select>
-            <input type="color" x-model="formCategoria.color" class="w-12 h-10 rounded-lg border border-gray-200" />
+            <input type="color" aria-label="Cor da categoria" x-model="formCategoria.color" class="w-12 h-10 rounded-lg border border-gray-200" />
             <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Nova</button>
           </form>
           <div class="flex flex-wrap gap-2">
@@ -1188,6 +1189,7 @@
         </section>
       </div>
     </template>
+    </main>
   </div>
 
   <script>

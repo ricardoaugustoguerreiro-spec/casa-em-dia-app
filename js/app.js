@@ -39,7 +39,7 @@ Alpine.data("appState", () => ({
     abaFinanceiro: "resumo", // resumo | contas_fixas | dia_a_dia | cartao_variaveis | visao_geral
     mesFinanceiro: new Date().toISOString().slice(0, 7), // "AAAA-MM"
     mostrarDetalheGasto: false, // expande/recolhe o detalhamento de "Já saiu" na Visão geral do mês
-    formPerfil: { display_name: "", color: "#7c3aed" },
+    formPerfil: { display_name: "", color: "#B94E33" },
     formSaldo: { amount: "", notes: "" },
     formCategoria: { name: "", kind: "variavel", color: "#64748b" },
     criandoContaFixa: false,
