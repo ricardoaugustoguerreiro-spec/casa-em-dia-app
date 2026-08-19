@@ -69,6 +69,11 @@ Alpine.data("appState", () => ({
     resultadoImportacao: null,
     alvoImportacaoFixos: "", // "cartao:<id>" ou "conta:<fixed_bill_id>" — pra onde vai o valor lido
     resultadoImportacaoValor: null,
+    buscaLancamentos: "", // texto da busca do Resumo
+    buscaLancamentosMesTodo: false, // true = procura em todos os meses, nao so no que esta aberto
+    avisos: [], // mensagens que aparecem dentro da tela, no lugar da caixa do navegador
+    _avisoId: 0,
+    pergunta: null, // { titulo, texto, botao, perigo, _resolver } enquanto espera resposta
     desfazerPagamento: null, // { nome, valor, item } enquanto durar a janela de arrependimento
     _desfazerPagamentoTimer: null,
     previaParcelas: null, // { itens, cartaoNome, competencia } — revisão antes de gravar parcelas detectadas no import
@@ -155,7 +160,7 @@ Alpine.data("appState", () => ({
 
     async ativarBiometria() {
       this.biometriaErro = "";
-      if (!this.biometriaSuportada) return alert("Esse navegador/dispositivo não suporta Face ID/digital (WebAuthn).");
+      if (!this.biometriaSuportada) return this.avisar("Esse navegador/dispositivo não suporta Face ID/digital (WebAuthn).");
       try {
         const credential = await navigator.credentials.create({
           publicKey: {
@@ -173,7 +178,7 @@ Alpine.data("appState", () => ({
         });
         if (!credential) throw new Error("Não foi possível criar a credencial.");
         localStorage.setItem(this.chaveBiometria(this.uid), bufferToBase64(credential.rawId));
-        alert("Desbloqueio por Face ID/digital ativado nesse aparelho!");
+        this.avisar("Desbloqueio por Face ID ou digital ligado neste aparelho.", "ok");
       } catch (e) {
         this.biometriaErro = "Não consegui ativar: " + e.message;
       }
@@ -302,16 +307,16 @@ Alpine.data("appState", () => ({
     },
 
     async excluirTransacao(id) {
-      if (!confirm("Excluir este lançamento? Não tem como desfazer.")) return;
+      if (!(await this.perguntar({ titulo: "Excluir este lançamento?", texto: "Ele some do mês e não tem como voltar atrás.", botao: "Excluir lançamento" }))) return;
       const { error } = await supabase.from("transactions").delete().eq("id", id);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       this.transactions = this.transactions.filter((t) => t.id !== id);
     },
 
     async excluirPagamento(id) {
-      if (!confirm("Excluir este lançamento de conta fixa? Não tem como desfazer.")) return;
+      if (!(await this.perguntar({ titulo: "Excluir este mês da conta?", texto: "Só este mês sai; a conta fixa continua cadastrada.", botao: "Excluir o mês" }))) return;
       const { error } = await supabase.from("bill_payments").delete().eq("id", id);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       this.billPayments = this.billPayments.filter((p) => p.id !== id);
     },
 
@@ -319,7 +324,7 @@ Alpine.data("appState", () => ({
       const novoStatus = p.status === "pago" ? "pendente" : "pago";
       const payload = { status: novoStatus, paid_at: novoStatus === "pago" ? new Date().toISOString() : null };
       const { error } = await supabase.from("bill_payments").update(payload).eq("id", p.id);
-      if (error) return alert("Erro ao atualizar: " + error.message);
+      if (error) return this.avisar("Erro ao atualizar: " + error.message);
       Object.assign(p, payload);
     },
 
@@ -337,7 +342,7 @@ Alpine.data("appState", () => ({
         paid_at: f.status === "pago" ? new Date((f.paid_at_data || this.hojeISO()) + "T12:00:00").toISOString() : null,
       };
       const { error } = await supabase.from("bill_payments").update(payload).eq("id", this.editandoPagamento.id);
-      if (error) return alert("Erro ao salvar: " + error.message);
+      if (error) return this.avisar("Erro ao salvar: " + error.message);
       Object.assign(this.editandoPagamento, payload);
       this.editandoPagamento = null;
     },
@@ -394,7 +399,7 @@ Alpine.data("appState", () => ({
     async salvarParcelada() {
       const f = this.formParcelada;
       const qtd = Number(f.parcelasQtd);
-      if (!f.descricao || !f.valor_parcela || !f.dataCompra || !qtd || qtd < 1) return alert("Preencha descrição, valor da parcela, dia da compra e quantas parcelas.");
+      if (!f.descricao || !f.valor_parcela || !f.dataCompra || !qtd || qtd < 1) return this.avisar("Preencha descrição, valor da parcela, dia da compra e quantas parcelas.");
       const mesInicio = f.dataCompra.slice(0, 7);
       const payload = {
         descricao: f.descricao,
@@ -409,13 +414,13 @@ Alpine.data("appState", () => ({
       if (this.editandoParcelada) {
         const id = this.editandoParcelada.id;
         const { error } = await supabase.from("compras_parceladas").update(payload).eq("id", id);
-        if (error) return alert("Erro ao salvar: " + error.message);
+        if (error) return this.avisar("Erro ao salvar: " + error.message);
         // atualiza o item no array-fonte (não na cópia do getter) pra a tela reagir na hora
         const orig = this.comprasParceladas.find((c) => c.id === id);
         if (orig) Object.assign(orig, payload);
       } else {
         const { error } = await supabase.from("compras_parceladas").insert({ ...payload, created_by: this.uid });
-        if (error) return alert("Erro ao salvar: " + error.message);
+        if (error) return this.avisar("Erro ao salvar: " + error.message);
         await this.loadDashboard();
       }
       this.criandoParcelada = false;
@@ -423,9 +428,9 @@ Alpine.data("appState", () => ({
     },
 
     async excluirParcelada(id) {
-      if (!confirm("Excluir esta compra parcelada? Não tem como desfazer.")) return;
+      if (!(await this.perguntar({ titulo: "Excluir esta compra parcelada?", texto: "Todas as parcelas dela saem da lista.", botao: "Excluir parcelada" }))) return;
       const { error } = await supabase.from("compras_parceladas").delete().eq("id", id);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       this.comprasParceladas = this.comprasParceladas.filter((c) => c.id !== id);
     },
 
@@ -541,7 +546,7 @@ Alpine.data("appState", () => ({
           qtdItens: lancamentosFatura.length,
         };
       } catch (e) {
-        alert("Erro ao ler o arquivo: " + e.message);
+        this.avisar("Erro ao ler o arquivo: " + e.message);
       } finally {
         this.processandoArquivo = false;
         event.target.value = "";
@@ -900,7 +905,7 @@ Alpine.data("appState", () => ({
     // total e grava no valor daquele item no mês atual. Subir de novo só regrava — sem duplicar.
 
     abrirImportarValorFixos() {
-      if (!this.alvoImportacaoFixos) { alert("Primeiro escolha o cartão ou a conta no seletor, depois suba o arquivo."); return; }
+      if (!this.alvoImportacaoFixos) { this.avisar("Primeiro escolha o cartão ou a conta no seletor, depois suba o arquivo."); return; }
       this.$refs.inputValorFixos.click();
     },
 
@@ -971,7 +976,7 @@ Alpine.data("appState", () => ({
           this.previaParcelas = this._prepararPreviaParcelas(parcelas, tipo === "cartao" ? nome : null, competencia);
         }
       } catch (e) {
-        alert("Erro ao importar: " + e.message);
+        this.avisar("Erro ao importar: " + e.message);
       } finally {
         this.processandoArquivo = false;
         if (event.target) event.target.value = "";
@@ -1055,7 +1060,7 @@ Alpine.data("appState", () => ({
         this.resultadoImportacao = { contasMarcadas, novosLancamentos };
         await this.loadDashboard();
       } catch (e) {
-        alert("Erro ao importar: " + e.message);
+        this.avisar("Erro ao importar: " + e.message);
       } finally {
         this.processandoArquivo = false;
         event.target.value = "";
@@ -1164,6 +1169,75 @@ Alpine.data("appState", () => ({
         entrou,
         sobra: entrou - jaSaiu - falta,
       };
+    },
+
+    // Busca dos lancamentos. Sao centenas de linhas e ate agora so dava para
+    // olhar as 8 mais recentes do mes: qualquer "quanto gastei na farmacia?"
+    // exigia rolar o extrato do banco.
+    get lancamentosEncontrados() {
+      const termo = this.buscaLancamentos.trim().toLowerCase();
+      const buscando = termo.length > 0;
+      const nome = (id) => this.categories.find((c) => c.id === id)?.name || "";
+
+      let lista = this.transactions.filter((t) => !t.transferencia_interna && t.kind !== "renda");
+      if (!buscando || !this.buscaLancamentosMesTodo) {
+        lista = lista.filter((t) => t.date.slice(0, 7) === this.mesFinanceiro);
+      }
+      if (buscando) {
+        // aceita procurar por descricao, categoria, conta, pessoa ou valor ("214,90" e "214.9" acham o mesmo)
+        const termoValor = termo.replace(/[R$\s]/gi, "").replace(",", ".");
+        lista = lista.filter((t) => {
+          const alvo = [t.description, nome(t.category_id), t.account, t.pessoa].filter(Boolean).join(" ").toLowerCase();
+          if (alvo.includes(termo)) return true;
+          if (!termoValor || !/[0-9]/.test(termoValor)) return false;
+          // "214,90", "214,9" e "214" tem que achar o mesmo lancamento
+          const valor = Number(t.amount || 0);
+          return valor.toFixed(2).includes(termoValor) || String(valor).includes(termoValor);
+        });
+      }
+      return lista.sort((a, b) => b.date.localeCompare(a.date));
+    },
+
+    get resumoDaBusca() {
+      const itens = this.lancamentosEncontrados;
+      return {
+        buscando: this.buscaLancamentos.trim().length > 0,
+        quantidade: itens.length,
+        total: itens.reduce((soma, t) => soma + Number(t.amount || 0), 0),
+      };
+    },
+
+    limparBuscaLancamentos() {
+      this.buscaLancamentos = "";
+      this.buscaLancamentosMesTodo = false;
+    },
+
+    // Aviso dentro da tela. A caixa do navegador trava tudo, nao da pra copiar o
+    // texto, some sem deixar rastro e tem a cara de sistema de banco antigo.
+    avisar(mensagem, tipo = "erro") {
+      const id = ++this._avisoId;
+      this.avisos.push({ id, mensagem, tipo });
+      const tempo = tipo === "erro" ? 9000 : 4500;
+      setTimeout(() => this.fecharAviso(id), tempo);
+      return undefined; // deixa `return this.avisar(...)` seguir funcionando
+    },
+
+    fecharAviso(id) {
+      this.avisos = this.avisos.filter((a) => a.id !== id);
+    },
+
+    // Confirmação dentro da tela, com o botão dizendo o que vai acontecer
+    // ("Excluir conta") em vez de um OK que não compromete ninguém.
+    perguntar({ titulo, texto = "", botao = "Confirmar", perigo = true }) {
+      return new Promise((resolver) => {
+        this.pergunta = { titulo, texto, botao, perigo, _resolver: resolver };
+      });
+    },
+
+    responderPergunta(resposta) {
+      const p = this.pergunta;
+      this.pergunta = null;
+      if (p && p._resolver) p._resolver(resposta);
     },
 
     // Pagar dali mesmo: quem ve "proxima: Carro, R$ 850" quer resolver ali,
@@ -1342,46 +1416,46 @@ Alpine.data("appState", () => ({
         .from("profiles")
         .update({ display_name: this.formPerfil.display_name, color: this.formPerfil.color })
         .eq("id", this.uid);
-      if (error) return alert("Erro ao salvar perfil: " + error.message);
+      if (error) return this.avisar("Erro ao salvar perfil: " + error.message);
       this.profile = { ...this.profile, ...this.formPerfil };
-      alert("Perfil atualizado.");
+      this.avisar("Perfil atualizado.");
     },
 
     async salvarSaldo() {
-      if (!this.formSaldo.amount) return alert("Informe o valor do saldo.");
+      if (!this.formSaldo.amount) return this.avisar("Informe o valor do saldo.");
       const { error } = await supabase.from("balances").insert({
         user_id: this.uid,
         amount: Number(this.formSaldo.amount),
         notes: this.formSaldo.notes || null,
       });
-      if (error) return alert("Erro ao salvar saldo: " + error.message);
+      if (error) return this.avisar("Erro ao salvar saldo: " + error.message);
       this.formSaldo = { amount: "", notes: "" };
       await this.loadDashboard();
     },
 
     async excluirSaldo(id) {
       const { error } = await supabase.from("balances").delete().eq("id", id);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       this.balances = this.balances.filter((b) => b.id !== id);
     },
 
     async salvarCategoria() {
-      if (!this.formCategoria.name) return alert("Dê um nome pra categoria.");
+      if (!this.formCategoria.name) return this.avisar("Dê um nome pra categoria.");
       const { error } = await supabase.from("categories").insert({
         name: this.formCategoria.name,
         kind: this.formCategoria.kind,
         color: this.formCategoria.color,
         created_by: this.uid,
       });
-      if (error) return alert("Erro ao criar categoria: " + error.message);
+      if (error) return this.avisar("Erro ao criar categoria: " + error.message);
       this.formCategoria = { name: "", kind: "variavel", color: "#64748b" };
       await this.loadDashboard();
     },
 
     async excluirCategoria(id) {
-      if (!confirm("Excluir esta categoria? Lançamentos que usam ela continuam, só perdem a categorização.")) return;
+      if (!(await this.perguntar({ titulo: "Excluir esta categoria?", texto: "Os lançamentos continuam; só ficam sem categoria.", botao: "Excluir categoria" }))) return;
       const { error } = await supabase.from("categories").delete().eq("id", id);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       this.categories = this.categories.filter((c) => c.id !== id);
     },
 
@@ -1452,7 +1526,7 @@ Alpine.data("appState", () => ({
       const novoStatus = f.status === "pago" ? "pendente" : "pago";
       const payload = { status: novoStatus, paid_at: novoStatus === "pago" ? new Date().toISOString() : null };
       const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", f.id);
-      if (error) return alert("Erro ao atualizar fatura: " + error.message);
+      if (error) return this.avisar("Erro ao atualizar fatura: " + error.message);
       Object.assign(f, payload);
     },
 
@@ -1464,7 +1538,7 @@ Alpine.data("appState", () => ({
     async salvarFatura() {
       const payload = { amount: Number(this.formFatura.amount), status: this.formFatura.status, paid_at: this.formFatura.status === "pago" ? (this.editandoFatura.paid_at || new Date().toISOString()) : null };
       const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", this.editandoFatura.id);
-      if (error) return alert("Erro ao salvar fatura: " + error.message);
+      if (error) return this.avisar("Erro ao salvar fatura: " + error.message);
       Object.assign(this.faturasCartao.find((f) => f.id === this.editandoFatura.id), payload);
       this.editandoFatura = null;
     },
@@ -1483,7 +1557,7 @@ Alpine.data("appState", () => ({
         paid_at: status === "pago" ? new Date((f.data || this.hojeISO()) + "T12:00:00").toISOString() : null,
       };
       const { error } = await supabase.from("faturas_cartao").update(payload).eq("id", this.editandoDataFatura.id);
-      if (error) return alert("Erro ao salvar data: " + error.message);
+      if (error) return this.avisar("Erro ao salvar data: " + error.message);
       Object.assign(this.editandoDataFatura, payload);
       this.editandoDataFatura = null;
     },
@@ -1523,12 +1597,12 @@ Alpine.data("appState", () => ({
       };
       if (this.editandoDiaADia) {
         const { error } = await supabase.from("dia_a_dia").update(payload).eq("id", this.editandoDiaADia.id);
-        if (error) return alert("Erro ao salvar: " + error.message);
+        if (error) return this.avisar("Erro ao salvar: " + error.message);
         Object.assign(this.editandoDiaADia, payload);
         this.editandoDiaADia = null;
       } else {
         const { data, error } = await supabase.from("dia_a_dia").insert({ ...payload, owner_id: this.uid }).select().single();
-        if (error) return alert("Erro ao salvar: " + error.message);
+        if (error) return this.avisar("Erro ao salvar: " + error.message);
         this.diaADia.unshift(data);
         this.criandoDiaADia = false;
       }
@@ -1540,9 +1614,9 @@ Alpine.data("appState", () => ({
     },
 
     async excluirDiaADia(id) {
-      if (!confirm("Excluir este lançamento do Dia a dia?")) return;
+      if (!(await this.perguntar({ titulo: "Excluir este gasto do dia a dia?", botao: "Excluir gasto" }))) return;
       const { error } = await supabase.from("dia_a_dia").delete().eq("id", id);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       this.diaADia = this.diaADia.filter((d) => d.id !== id);
     },
 
@@ -1567,7 +1641,7 @@ Alpine.data("appState", () => ({
     async salvarPrevisaoGrupo() {
       const nome = this.formPrevisaoGrupo.nome.trim();
       const dias = this.formPrevisaoGrupo.dias.filter((d) => d.data && d.valor);
-      if (!nome || !dias.length) return alert("Preencha o nome do grupo e pelo menos um dia com valor.");
+      if (!nome || !dias.length) return this.avisar("Preencha o nome do grupo e pelo menos um dia com valor.");
       const grupo = `${nome}-${Date.now()}`;
       const linhas = dias.map((d) => ({
         data: d.data,
@@ -1578,7 +1652,7 @@ Alpine.data("appState", () => ({
         owner_id: this.uid,
       }));
       const { data, error } = await supabase.from("dia_a_dia").insert(linhas).select();
-      if (error) return alert("Erro ao salvar: " + error.message);
+      if (error) return this.avisar("Erro ao salvar: " + error.message);
       this.diaADia.unshift(...data);
       this.criandoPrevisaoGrupo = false;
     },
@@ -1988,7 +2062,7 @@ Alpine.data("appState", () => ({
 
     async salvarContaFixa() {
       const f = this.formContaFixa;
-      if (!f.name || !f.amount || !f.due_day) return alert("Preencha nome, valor e dia de vencimento.");
+      if (!f.name || !f.amount || !f.due_day) return this.avisar("Preencha nome, valor e dia de vencimento.");
       if (this.editandoContaFixa) {
         const payload = {
           name: f.name,
@@ -1998,7 +2072,7 @@ Alpine.data("appState", () => ({
           vence_mes_seguinte: !!f.vence_mes_seguinte,
         };
         const { error } = await supabase.from("fixed_bills").update(payload).eq("id", this.editandoContaFixa.id);
-        if (error) return alert("Erro ao salvar conta fixa: " + error.message);
+        if (error) return this.avisar("Erro ao salvar conta fixa: " + error.message);
         // atualiza também o pagamento pendente do mês selecionado, se existir, pra refletir na hora
         const pagamentoDoMes = this.billPaymentsDoMes.find((p) => p.fixed_bill_id === this.editandoContaFixa.id && p.status === "pendente");
         if (pagamentoDoMes) {
@@ -2025,7 +2099,7 @@ Alpine.data("appState", () => ({
         })
         .select()
         .single();
-      if (error) return alert("Erro ao criar conta fixa: " + error.message);
+      if (error) return this.avisar("Erro ao criar conta fixa: " + error.message);
       const mesVencimento = bill.vence_mes_seguinte ? this.mesSeguinte(this.mesFinanceiro) : this.mesFinanceiro;
       const dueDate = `${mesVencimento}-${String(f.due_day).padStart(2, "0")}`;
       await supabase.from("bill_payments").insert({ fixed_bill_id: bill.id, due_date: dueDate, competencia: this.mesFinanceiro, amount: bill.amount, status: "pendente" });
@@ -2034,9 +2108,9 @@ Alpine.data("appState", () => ({
     },
 
     async excluirContaFixa(fixedBillId) {
-      if (!confirm("Excluir esta conta fixa? Isso remove TODOS os meses dela (passados e futuros), não tem como desfazer.")) return;
+      if (!(await this.perguntar({ titulo: "Excluir esta conta fixa?", texto: "Some com TODOS os meses dela, passados e futuros. Não tem como voltar atrás.", botao: "Excluir a conta e todos os meses" }))) return;
       const { error } = await supabase.from("fixed_bills").delete().eq("id", fixedBillId);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       await this.loadDashboard();
     },
 
@@ -2072,7 +2146,7 @@ Alpine.data("appState", () => ({
 
     async salvarTransacao() {
       const f = this.formTransacao;
-      if (!f.description || !f.amount || !f.date) return alert("Preencha descrição, valor e data.");
+      if (!f.description || !f.amount || !f.date) return this.avisar("Preencha descrição, valor e data.");
       const payload = {
         description: f.description,
         amount: Number(f.amount),
@@ -2086,11 +2160,11 @@ Alpine.data("appState", () => ({
         // marca edited=true: a sincronização com o Sistema de Joias nunca sobrescreve
         // um lançamento que você editou manualmente aqui.
         const { error } = await supabase.from("transactions").update({ ...payload, edited: true }).eq("id", this.editandoTransacao.id);
-        if (error) return alert("Erro ao salvar lançamento: " + error.message);
+        if (error) return this.avisar("Erro ao salvar lançamento: " + error.message);
         this.editandoTransacao = null;
       } else {
         const { error } = await supabase.from("transactions").insert({ ...payload, source: "manual", created_by: this.uid });
-        if (error) return alert("Erro ao salvar lançamento: " + error.message);
+        if (error) return this.avisar("Erro ao salvar lançamento: " + error.message);
       }
       this.criandoTransacao = false;
       await this.loadDashboard();
@@ -2130,7 +2204,7 @@ Alpine.data("appState", () => ({
     async importarBackup(event) {
       const file = event.target.files[0];
       if (!file) return;
-      if (!confirm("Importar este backup vai adicionar/atualizar dados no banco atual. Continuar?")) {
+      if (!(await this.perguntar({ titulo: "Importar este backup?", texto: "Ele adiciona e atualiza dados no que já existe. O que estiver no arquivo vence.", botao: "Importar backup", perigo: false }))) {
         event.target.value = "";
         return;
       }
@@ -2144,10 +2218,10 @@ Alpine.data("appState", () => ({
             if (error) throw new Error(`${tabela}: ${error.message}`);
           }
         }
-        alert("Backup importado com sucesso.");
+        this.avisar("Backup importado.", "ok");
         await this.loadDashboard();
       } catch (e) {
-        alert("Erro ao importar backup: " + e.message);
+        this.avisar("Erro ao importar backup: " + e.message);
       } finally {
         event.target.value = "";
       }
@@ -2277,10 +2351,10 @@ Alpine.data("appState", () => ({
     async marcarDiaMenstruacao(dataISO) {
       if (this.diaDeMenstruacao(dataISO)) {
         const { error } = await supabase.from("dias_menstruacao").delete().eq("user_id", this.uid).eq("data", dataISO);
-        if (error) return alert("Erro ao desmarcar: " + error.message);
+        if (error) return this.avisar("Erro ao desmarcar: " + error.message);
       } else {
         const { error } = await supabase.from("dias_menstruacao").insert({ user_id: this.uid, data: dataISO });
-        if (error) return alert("Erro ao marcar: " + error.message);
+        if (error) return this.avisar("Erro ao marcar: " + error.message);
       }
       await this.loadDashboard();
     },
@@ -2382,7 +2456,7 @@ Alpine.data("appState", () => ({
       const { error } = await supabase
         .from("registros_intimos")
         .upsert({ user_id: this.uid, data: dataISO, preservativo }, { onConflict: "user_id,data" });
-      if (error) return alert("Erro ao salvar registro: " + error.message);
+      if (error) return this.avisar("Erro ao salvar registro: " + error.message);
       await this.loadDashboard();
     },
 
@@ -2392,7 +2466,7 @@ Alpine.data("appState", () => ({
         .delete()
         .eq("user_id", this.uid)
         .eq("data", dataISO);
-      if (error) return alert("Erro ao excluir registro: " + error.message);
+      if (error) return this.avisar("Erro ao excluir registro: " + error.message);
       await this.loadDashboard();
     },
 
@@ -2437,7 +2511,7 @@ Alpine.data("appState", () => ({
 
     async salvarEvento() {
       const f = this.formEvento;
-      if (!f.title || !f.data) return alert("Preencha pelo menos o título e a data.");
+      if (!f.title || !f.data) return this.avisar("Preencha pelo menos o título e a data.");
       const payload = {
         title: f.title,
         starts_at: `${f.data}T${f.hora_inicio}:00`,
@@ -2456,16 +2530,16 @@ Alpine.data("appState", () => ({
       } else {
         ({ error } = await supabase.from("events").insert(payload));
       }
-      if (error) return alert("Erro ao salvar evento: " + error.message);
+      if (error) return this.avisar("Erro ao salvar evento: " + error.message);
       await this.recarregarEventos();
       this.diaSelecionado = null;
       this.eventoEditando = null;
     },
 
     async excluirEvento(ev) {
-      if (!confirm(`Excluir "${ev.title}"? Não tem como desfazer.`)) return;
+      if (!(await this.perguntar({ titulo: `Excluir "${ev.title}"?`, texto: "O compromisso sai do calendário.", botao: "Excluir compromisso" }))) return;
       const { error } = await supabase.from("events").delete().eq("id", ev.id);
-      if (error) return alert("Erro ao excluir: " + error.message);
+      if (error) return this.avisar("Erro ao excluir: " + error.message);
       await this.recarregarEventos();
     },
 
@@ -2577,10 +2651,10 @@ Alpine.data("appState", () => ({
             criados++;
           }
         }
-        alert(`Prazos importados: ${criados} novos, ${atualizados} atualizados.`);
+        this.avisar(`Prazos importados: ${criados} novos, ${atualizados} atualizados.`, "ok");
         await this.recarregarEventos();
       } catch (e) {
-        alert("Erro ao importar prazos: " + e.message);
+        this.avisar("Erro ao importar prazos: " + e.message);
       } finally {
         event.target.value = "";
       }

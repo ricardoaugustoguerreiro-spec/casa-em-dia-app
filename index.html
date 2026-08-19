@@ -110,7 +110,7 @@
   }
 </style>
 </head>
-<body class="min-h-screen" x-data="appState" @keydown.escape.window="fecharTudo()">
+<body class="min-h-screen" x-data="appState" @keydown.escape.window="pergunta ? responderPergunta(false) : fecharTudo()">
 
   <!-- LOADING -->
   <div x-show="view === 'loading'" class="flex items-center justify-center min-h-screen text-gray-400">
@@ -353,20 +353,40 @@
               </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm p-4">
-              <h2 class="text-sm font-semibold text-gray-700 mb-1">Gastos variáveis recentes</h2>
-              <p class="text-xs text-gray-400 mb-3">Cartão, variáveis e lançamentos avulsos · <span x-text="nomeMesFinanceiro"></span></p>
-              <div class="divide-y">
-                <template x-for="t in transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna && t.kind !== 'renda').slice(0, 8)" :key="t.id">
+              <h2 class="text-sm font-semibold text-gray-700 mb-1">Gastos variáveis</h2>
+              <p class="text-sm text-gray-500 mb-3">Cartão, variáveis e lançamentos avulsos · <span x-text="buscaLancamentosMesTodo && resumoDaBusca.buscando ? 'todos os meses' : nomeMesFinanceiro"></span></p>
+
+              <div class="relative mb-2">
+                <input type="search" x-model="buscaLancamentos" aria-label="Procurar lançamento"
+                       placeholder="Procurar por nome, valor ou categoria"
+                       class="w-full rounded-xl border border-gray-200 bg-gray-50 pl-3 pr-10 py-2.5 text-base" />
+                <button x-show="buscaLancamentos" @click="limparBuscaLancamentos()" aria-label="Limpar busca"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900">✕</button>
+              </div>
+
+              <label x-show="resumoDaBusca.buscando" class="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                <input type="checkbox" x-model="buscaLancamentosMesTodo" class="rounded" />
+                Procurar em todos os meses
+              </label>
+
+              <p x-show="resumoDaBusca.buscando" class="text-sm text-gray-700 mb-2"
+                 x-text="resumoDaBusca.quantidade === 0 ? 'Nada encontrado.' : (resumoDaBusca.quantidade === 1 ? '1 lançamento, ' : resumoDaBusca.quantidade + ' lançamentos, ') + fmtMoeda(resumoDaBusca.total) + ' no total'"></p>
+
+              <div class="divide-y" :class="resumoDaBusca.buscando ? 'max-h-96 overflow-y-auto' : ''">
+                <template x-for="t in (resumoDaBusca.buscando ? lancamentosEncontrados.slice(0, 100) : lancamentosEncontrados.slice(0, 8))" :key="t.id">
                   <div class="flex items-center justify-between gap-2 py-2.5">
                     <div class="min-w-0">
                       <p class="font-medium truncate" x-text="t.description"></p>
-                      <p class="text-xs text-gray-400" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
+                      <p class="text-sm text-gray-500" x-text="fmtData(t.date) + (t.account ? ' · ' + t.account : '')"></p>
                     </div>
-                    <p class="font-medium shrink-0" x-text="fmtMoeda(t.amount)"></p>
+                    <p class="font-semibold shrink-0" x-text="fmtMoeda(t.amount)"></p>
                   </div>
                 </template>
-                <p x-show="transactions.filter(t => t.date.slice(0,7) === mesFinanceiro && !t.transferencia_interna && t.kind !== 'renda').length === 0" class="text-sm text-gray-500 py-2">Nenhum lançamento variável nesse mês.</p>
+                <p x-show="!resumoDaBusca.buscando && lancamentosEncontrados.length === 0" class="text-sm text-gray-500 py-2">Nenhum lançamento variável nesse mês.</p>
+                <p x-show="resumoDaBusca.buscando && resumoDaBusca.quantidade === 0 && !buscaLancamentosMesTodo" class="text-sm text-gray-500 py-2">Nada nesse mês. Marque "todos os meses" pra procurar no histórico inteiro.</p>
               </div>
+
+              <p x-show="resumoDaBusca.buscando && resumoDaBusca.quantidade > 100" class="text-sm text-gray-500 mt-2" x-text="'Mostrando os 100 mais recentes de ' + resumoDaBusca.quantidade + '.'"></p>
             </section>
             </div>
           </div>
@@ -1196,6 +1216,31 @@
       </div>
     </template>
     </main>
+
+    <!-- avisos dentro da tela, no lugar da caixa do navegador -->
+    <div x-show="avisos.length" x-cloak class="fixed inset-x-0 top-0 z-[60] p-3 flex flex-col items-center gap-2 pointer-events-none">
+      <template x-for="a in avisos" :key="a.id">
+        <div class="pointer-events-auto w-full max-w-md rounded-xl shadow-lg px-4 py-3 flex items-start gap-3 border"
+             :class="a.tipo === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : a.tipo === 'info' ? 'bg-white border-gray-200 text-gray-700' : 'bg-red-50 border-red-200 text-red-700'">
+          <p class="text-sm flex-1" x-text="a.mensagem"></p>
+          <button @click="fecharAviso(a.id)" aria-label="Fechar aviso" class="shrink-0 text-lg leading-none opacity-70 hover:opacity-100">✕</button>
+        </div>
+      </template>
+    </div>
+
+    <!-- pergunta antes de apagar: o botao diz o que vai acontecer -->
+    <div x-show="pergunta" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[70]" @click.self="responderPergunta(false)">
+      <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
+        <h2 class="text-base font-semibold text-gray-900" x-text="pergunta?.titulo"></h2>
+        <p x-show="pergunta?.texto" class="text-sm text-gray-600 mt-1.5" x-text="pergunta?.texto"></p>
+        <div class="flex gap-2 mt-5">
+          <button @click="responderPergunta(false)" class="flex-1 rounded-xl border border-gray-300 text-gray-700 px-4 py-2.5 text-sm font-medium">Cancelar</button>
+          <button @click="responderPergunta(true)" class="flex-1 rounded-xl text-white px-4 py-2.5 text-sm font-medium"
+                  :class="pergunta?.perigo ? 'bg-red-600 hover:bg-red-700' : 'bg-rose-500 hover:bg-rose-600'"
+                  x-text="pergunta?.botao"></button>
+        </div>
+      </div>
+    </div>
 
     <!-- janela de arrependimento: toda acao de dinheiro pode voltar atras -->
     <div x-show="desfazerPagamento" x-cloak
