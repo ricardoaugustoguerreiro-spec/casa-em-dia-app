@@ -3,3 +3,5 @@ _segredos-nao-compartilhar/
 .DS_Store
 __pycache__/
 backup-output/
+
+harness/index.html

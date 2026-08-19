@@ -2496,6 +2496,108 @@ Alpine.data("appState", () => ({
   })
 );
 
+// ---------------------------------------------------------------------------
+// x-moeda: campo de dinheiro em português do Brasil.
+//
+// Antes usávamos <input type="number">, que só aceita ponto como separador
+// decimal. Quem digitava "1.234,56" (o jeito normal de escrever dinheiro aqui)
+// via o campo esvaziar sem aviso nenhum. Agora o campo é texto: aceita vírgula
+// ou ponto, ignora "R$" e espaços, mostra o valor formatado ao sair do campo e
+// guarda no modelo um NÚMERO — todos os `Number(...)` dos salvamentos continuam
+// funcionando sem mudança.
+// ---------------------------------------------------------------------------
+export function parseMoedaBR(texto) {
+  if (texto === null || texto === undefined) return "";
+  let s = String(texto).trim().replace(/[R$\s ]/gi, "");
+  if (!s) return "";
+  const temVirgula = s.includes(",");
+  if (temVirgula) {
+    // vírgula é o decimal; pontos são separador de milhar
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else {
+    const pontos = s.split(".").length - 1;
+    const casasFinais = s.includes(".") ? s.length - s.lastIndexOf(".") - 1 : 0;
+    // "1.234" e "1.234.567" são milhar; "12.5" e "12.50" são decimal
+    if (pontos > 1 || (pontos === 1 && casasFinais === 3)) s = s.replace(/\./g, "");
+  }
+  s = s.replace(/[^0-9.-]/g, "");
+  if (!/[0-9]/.test(s)) return ""; // texto sem número nenhum não vira zero
+  const n = Number(s);
+  return Number.isFinite(n) ? n : "";
+}
+
+export function formatarMoedaBR(valor) {
+  if (valor === "" || valor === null || valor === undefined) return "";
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+Alpine.directive("moeda", (el, { expression }, { evaluate, evaluateLater, effect, cleanup }) => {
+  const ler = evaluateLater(expression);
+  const escrever = (valor) => evaluate(`${expression} = __moeda`, { scope: { __moeda: valor } });
+
+  el.type = "text";
+  el.inputMode = "decimal";
+  el.autocomplete = "off";
+  el.setAttribute("lang", "pt-BR");
+  if (!el.placeholder) el.placeholder = "0,00";
+
+  // prefixo R$ dentro do campo, para não restar dúvida da unidade
+  const pai = el.parentElement;
+  if (pai && !pai.querySelector("[data-moeda-prefixo]")) {
+    if (getComputedStyle(pai).position === "static") pai.style.position = "relative";
+    const marca = document.createElement("span");
+    marca.dataset.moedaPrefixo = "1";
+    marca.textContent = "R$";
+    marca.style.cssText =
+      "position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:#55606E;pointer-events:none;";
+    pai.appendChild(marca);
+    el.style.paddingLeft = "42px";
+    el.style.textAlign = "right";
+    el.style.paddingRight = "12px";
+  }
+
+  let focado = false;
+
+  const aoDigitar = () => {
+    focado = true;
+    escrever(parseMoedaBR(el.value));
+  };
+  const aoFocar = () => {
+    focado = true;
+    // durante a edição mostramos o número cru, sem separador de milhar
+    ler((v) => {
+      el.value = v === "" || v === null || v === undefined ? "" : String(v).replace(".", ",");
+    });
+    requestAnimationFrame(() => el.select());
+  };
+  const aoSair = () => {
+    focado = false;
+    const n = parseMoedaBR(el.value);
+    escrever(n);
+    el.value = formatarMoedaBR(n);
+  };
+
+  el.addEventListener("input", aoDigitar);
+  el.addEventListener("focus", aoFocar);
+  el.addEventListener("blur", aoSair);
+
+  // o modelo pode mudar por fora (abrir modal de edição, importar valor...)
+  effect(() => {
+    ler((v) => {
+      if (focado) return;
+      el.value = formatarMoedaBR(v);
+    });
+  });
+
+  cleanup(() => {
+    el.removeEventListener("input", aoDigitar);
+    el.removeEventListener("focus", aoFocar);
+    el.removeEventListener("blur", aoSair);
+  });
+});
+
 // Importamos o Alpine como módulo (em vez de tag <script defer>) justamente pra
 // garantir que Alpine.data("appState", ...) acima SEMPRE rode antes de Alpine.start().
 // Eliminamos assim a corrida de carregamento que causava "appState is not defined".

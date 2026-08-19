@@ -13,13 +13,104 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#dc6b4f" />
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Sistema visual do Casa em Dia (ver DESIGN.md).
+  // Remapeia a paleta padrao do Tailwind para os tokens do produto: assim as classes
+  // ja escritas no HTML passam a usar cores com contraste aprovado, sem reescrever markup.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          // neutros: 400 e 500 sao cor de leitura, por isso escurecem
+          gray: {
+            50:'#F5F6F8', 100:'#EEF0F3', 200:'#E2E6EB', 300:'#CBD2DA',
+            400:'#55606E', 500:'#55606E', 600:'#414B58',
+            700:'#303945', 800:'#232C37', 900:'#1B2430',
+          },
+          // coral da marca: 400 e identidade, 500+ e acao (texto branco em cima)
+          rose: {
+            50:'#FDF0EC', 100:'#F9DED5', 200:'#F2C0B1', 300:'#E89478',
+            400:'#DC6B4F', 500:'#B94E33', 600:'#A8442C', 700:'#8F3925',
+            800:'#77301F', 900:'#5E261A',
+          },
+          // sinais
+          green:   { 50:'#E8F5EF', 100:'#D2ECE1', 500:'#0F7A57', 600:'#0C6448', 700:'#0F7A57' },
+          emerald: { 50:'#E8F5EF', 100:'#D2ECE1', 500:'#0F7A57', 600:'#0C6448', 700:'#0F7A57' },
+          amber:   { 50:'#FCF2E0', 100:'#F7E4C4', 500:'#8A5A00', 600:'#744C00', 700:'#8A5A00', 800:'#5E3D00' },
+          red:     { 50:'#FCEBE9', 100:'#F8D6D2', 500:'#B3271E', 600:'#98211A', 700:'#B3271E' },
+          // categorias que continuam existindo, alinhadas ao sistema
+          blue:    { 50:'#EAF1F8', 100:'#DCE7F2', 500:'#2C5D8F', 700:'#2C5D8F' },
+          indigo:  { 50:'#EAF1F8', 100:'#DCE7F2', 500:'#2C5D8F', 700:'#2C5D8F' },
+          pink:    { 50:'#FBEAF0', 100:'#F6D6E1', 500:'#A33A63', 600:'#8C3054', 700:'#A33A63' },
+          violet:  { 500:'#B94E33', 600:'#A8442C' },
+          teal:    { 400:'#0F7A57', 500:'#0F7A57' },
+          orange:  { 500:'#B94E33', 600:'#A8442C' },
+        },
+        borderRadius: {
+          md:'10px', lg:'14px', xl:'14px', '2xl':'18px', '3xl':'22px',
+        },
+        boxShadow: {
+          sm:'0 1px 2px rgba(27,36,48,.06), 0 1px 8px rgba(27,36,48,.04)',
+          DEFAULT:'0 1px 2px rgba(27,36,48,.06), 0 1px 8px rgba(27,36,48,.04)',
+          lg:'0 8px 24px rgba(27,36,48,.10), 0 2px 6px rgba(27,36,48,.06)',
+        },
+      },
+    },
+  };
+</script>
 <script type="module" src="js/app.js"></script>
 <style>
-  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
+  :root {
+    --bg:#F5F6F8; --surface:#FFFFFF; --surface-sunken:#EEF0F3;
+    --ink:#1B2430; --ink-2:#55606E; --ink-3:#97A1AE;
+    --border:#E2E6EB; --border-strong:#CBD2DA;
+    --brand:#DC6B4F; --brand-action:#B94E33; --brand-ink:#A8442C;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    -webkit-text-size-adjust: 100%;
+  }
   [x-cloak] { display: none !important; }
+
+  /* Foco sempre visivel, no aro da marca */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Alvo de toque: abas, setas de mes e acoes de linha chegam a 44px */
+  button, [role="button"], select, summary { touch-action: manipulation; }
+  .rounded-full.py-2, .rounded-full.py-1\.5 { min-height: 44px; }
+
+  /* No dedo, todo controle chega a 44px; no mouse, 32px basta */
+  @media (pointer: coarse), (max-width: 767px) {
+    button, a[href], select, summary { min-height: 44px; min-width: 44px; }
+    input:not([type=checkbox]):not([type=radio]), textarea { min-height: 44px; }
+    button.flex-1, a.block { min-width: 0; }
+  }
+  @media (pointer: fine) and (min-width: 768px) {
+    button, a[href], select { min-height: 32px; }
+  }
+
+  /* iOS da zoom em campo com fonte < 16px */
+  input, select, textarea { font-size: 16px; }
+
+  /* Movimento curto; some por completo quando o sistema pede */
+  .transition { transition-duration: 160ms; transition-timing-function: var(--ease); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important; scroll-behavior: auto !important;
+    }
+  }
 </style>
 </head>
-<body class="bg-gradient-to-br from-orange-50 to-rose-50 min-h-screen" x-data="appState">
+<body class="min-h-screen" x-data="appState">
 
   <!-- LOADING -->
   <div x-show="view === 'loading'" class="flex items-center justify-center min-h-screen text-gray-400">
@@ -30,7 +121,7 @@
   <div x-show="view === 'login'" x-cloak class="flex items-center justify-center min-h-screen p-4">
     <div class="w-full max-w-sm">
       <div class="text-center mb-6">
-        <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-400 flex items-center justify-center text-white text-2xl">❤</div>
+        <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-rose-400 flex items-center justify-center text-white text-2xl">❤</div>
         <h1 class="text-2xl font-bold">Casa em Dia</h1>
         <p class="text-gray-500 text-sm">Controle financeiro e calendário do casal.</p>
       </div>
@@ -124,7 +215,7 @@
             <template x-for="(t, i) in tarefasDeHoje" :key="i">
               <div class="flex items-center justify-between gap-2 py-2.5">
                 <p class="font-medium truncate" x-text="t.titulo"></p>
-                <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase shrink-0" x-text="t.tipo"></span>
+                <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase shrink-0" x-text="t.tipo"></span>
               </div>
             </template>
             <p x-show="tarefasDeHoje.length === 0" class="text-xs text-gray-400 py-1">Nada marcado pra hoje. 🎉</p>
@@ -140,7 +231,7 @@
                   <p class="font-medium truncate" x-text="t.titulo"></p>
                   <p class="text-xs text-gray-400" x-text="t.prazo ? 'Prazo ' + fmtData(t.prazo) : 'Sem prazo definido'"></p>
                 </div>
-                <span class="text-[10px] px-2 py-0.5 rounded-full uppercase shrink-0" :class="t.origem === 'sistema_joias' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'" x-text="t.origem === 'sistema_joias' ? 'joia' : 'agenda'"></span>
+                <span class="text-[11px] px-2 py-0.5 rounded-full uppercase shrink-0" :class="t.origem === 'sistema_joias' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'" x-text="t.origem === 'sistema_joias' ? 'joia' : 'agenda'"></span>
               </div>
             </template>
             <p x-show="trabalhosEmAberto.length === 0" class="text-xs text-gray-400 py-1">Nenhum trabalho em aberto. 🎉</p>
@@ -161,7 +252,7 @@
         <section class="bg-white rounded-2xl shadow-sm p-4" style="grid-column: 1 / -1;">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-semibold text-gray-700">📅 Agenda da semana</h2>
-            <span x-show="conflitosNaSemana > 0" class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 uppercase" x-text="conflitosNaSemana + ' dia(s) com conflito'"></span>
+            <span x-show="conflitosNaSemana > 0" class="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 uppercase" x-text="conflitosNaSemana + ' dia(s) com conflito'"></span>
           </div>
           <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));">
             <template x-for="d in agendaDaSemana" :key="d.data">
@@ -169,7 +260,7 @@
                 <p class="text-xs font-semibold" :class="(d.conflitoAgenda || d.conflitoFinanceiro) ? 'text-red-700' : 'text-gray-700'" x-text="ehHoje(d.data) ? 'Hoje' : fmtData(d.data)"></p>
                 <p class="text-[11px] text-gray-500 mt-1" x-text="d.eventos.length + ' compromisso(s)'"></p>
                 <p class="text-[11px]" :class="d.contas.length ? 'text-red-600' : 'text-gray-400'" x-text="d.contas.length ? d.contas.length + ' conta(s) vencendo' : 'sem contas vencendo'"></p>
-                <p class="text-[10px] text-red-600 font-medium mt-1" x-show="d.conflitoAgenda || d.conflitoFinanceiro">⚠️ conflito</p>
+                <p class="text-[11px] text-red-600 font-medium mt-1" x-show="d.conflitoAgenda || d.conflitoFinanceiro">⚠️ conflito</p>
               </button>
             </template>
           </div>
@@ -183,9 +274,9 @@
       <div>
         <!-- SELETOR DE MÊS (vale pra tudo, exceto transferências que é histórico completo) -->
         <div class="flex items-center justify-between mb-4 bg-white rounded-2xl shadow-sm px-2 py-2">
-          <button @click="mesFinanceiroAnterior" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
+          <button @click="mesFinanceiroAnterior" aria-label="Mês anterior" class="min-w-[44px] min-h-[44px] grid place-items-center rounded-full border border-gray-200 text-base text-gray-700">‹</button>
           <p class="font-semibold" x-text="nomeMesFinanceiro"></p>
-          <button @click="mesFinanceiroSeguinte" class="px-3 py-1 rounded-full border border-gray-200 text-sm">›</button>
+          <button @click="mesFinanceiroSeguinte" aria-label="Próximo mês" class="min-w-[44px] min-h-[44px] grid place-items-center rounded-full border border-gray-200 text-base text-gray-700">›</button>
         </div>
 
 
@@ -263,15 +354,15 @@
                   <div class="min-w-0">
                     <p class="font-medium flex items-center gap-2 flex-wrap">
                       <span x-text="billName(p.fixed_bill_id)"></span>
-                      <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(p.status)" x-text="p.status"></span>
+                      <span class="text-[11px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(p.status)" x-text="p.status"></span>
                     </p>
                     <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(p.due_date) + ' · ' + fmtMoeda(p.amount)"></p>
                     <p x-show="p.status === 'pago' && p.paid_at" class="text-xs text-green-600 font-medium" x-text="'✓ Pago em ' + fmtData(p.paid_at.slice(0,10))"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarPago(p)" class="text-xs px-3 py-1.5 rounded-full border" :class="p.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="p.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
-                    <button @click="abrirEditarContaFixa(fixedBills.find(b => b.id === p.fixed_bill_id))" aria-label="Editar conta fixa" class="text-gray-300 hover:text-gray-600 p-1" title="Editar nome/valor/vencimento">✎</button>
-                    <button @click="abrirEditarPagamento(p)" aria-label="Editar pagamento deste mês" class="text-gray-300 hover:text-gray-600 p-1" title="Editar só este mês">📅</button>
+                    <button @click="abrirEditarContaFixa(fixedBills.find(b => b.id === p.fixed_bill_id))" aria-label="Editar conta fixa" class="text-gray-500 hover:text-gray-900 p-1" title="Editar nome/valor/vencimento">✎</button>
+                    <button @click="abrirEditarPagamento(p)" aria-label="Editar pagamento deste mês" class="text-gray-500 hover:text-gray-900 p-1" title="Editar só este mês">📅</button>
                     <button @click="excluirContaFixa(p.fixed_bill_id)" aria-label="Excluir conta fixa" class="text-gray-300 hover:text-red-500 p-1">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
                     </button>
@@ -289,16 +380,16 @@
                   <div class="min-w-0">
                     <p class="font-medium flex items-center gap-2 flex-wrap">
                       <span x-text="cartaoNome(f.cartao_id)"></span>
-                      <span class="text-[10px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(f.status)" x-text="f.status"></span>
-                      <span x-show="alertaLimiteCartao(f) === 'estourou'" class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-red-100 text-red-700">🚨 estourou o limite</span>
-                      <span x-show="alertaLimiteCartao(f) === 'perto'" class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700">⚠️ perto do limite</span>
+                      <span class="text-[11px] px-2 py-0.5 rounded-full uppercase" :class="statusBadgeClass(f.status)" x-text="f.status"></span>
+                      <span x-show="alertaLimiteCartao(f) === 'estourou'" class="text-[11px] px-2 py-0.5 rounded-full uppercase bg-red-100 text-red-700">🚨 estourou o limite</span>
+                      <span x-show="alertaLimiteCartao(f) === 'perto'" class="text-[11px] px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700">⚠️ perto do limite</span>
                     </p>
                     <p class="text-xs text-gray-400" x-text="'Vence ' + fmtData(f.due_date) + ' · ' + fmtMoeda(f.amount) + (percentualLimiteCartao(f) !== null ? ' · ' + Math.round(percentualLimiteCartao(f)*100) + '% do limite' : '')"></p>
                     <p x-show="f.status === 'pago' && f.paid_at" class="text-xs text-green-600 font-medium" x-text="'✓ Pago em ' + fmtData(f.paid_at.slice(0,10))"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button @click="marcarFaturaPaga(f)" class="text-xs px-3 py-1.5 rounded-full border" :class="f.status === 'pago' ? 'border-gray-200 text-gray-500' : 'border-green-200 text-green-700 hover:bg-green-50'" x-text="f.status === 'pago' ? '✕ Desmarcar' : '✓ Pagar'"></button>
-                    <button @click="abrirEditarDataFatura(f)" aria-label="Editar data do pagamento" title="Data em que foi paga" class="text-gray-300 hover:text-gray-600 p-1">📅</button>
+                    <button @click="abrirEditarDataFatura(f)" aria-label="Editar data do pagamento" title="Data em que foi paga" class="text-gray-500 hover:text-gray-900 p-1">📅</button>
                     <button @click="abrirEditarFatura(f)" aria-label="Editar valor da fatura" class="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">✎ Editar</button>
                   </div>
                 </div>
@@ -317,7 +408,7 @@
             </div>
             <form @submit.prevent="salvarFatura" class="space-y-2">
               <label class="block text-xs text-gray-500">Valor da fatura (R$)</label>
-              <input type="number" step="0.01" x-model="formFatura.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" x-moeda="formFatura.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <select x-model="formFatura.status" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
                 <option value="pendente">Pendente</option>
                 <option value="pago">Pago</option>
@@ -357,7 +448,7 @@
             </div>
             <form @submit.prevent="salvarPagamento" class="space-y-2">
               <label class="block text-xs text-gray-500">Valor (R$)</label>
-              <input type="number" step="0.01" x-model="formPagamento.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" x-moeda="formPagamento.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500">Vencimento</label>
               <input type="date" x-model="formPagamento.due_date" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <select x-model="formPagamento.status" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
@@ -394,7 +485,7 @@
                 <template x-for="(dia, i) in formPrevisaoGrupo.dias" :key="i">
                   <div class="flex items-center gap-2">
                     <input type="date" x-model="dia.data" required class="flex-1 rounded-lg border border-gray-200 px-2 py-2 text-sm" />
-                    <input type="number" step="0.01" x-model="dia.valor" required placeholder="R$" class="w-24 rounded-lg border border-gray-200 px-2 py-2 text-base" />
+                    <input type="text" x-moeda="dia.valor" required placeholder="0,00" class="w-24 rounded-lg border border-gray-200 px-2 py-2 text-base" />
                     <button type="button" @click="removerDiaPrevisaoGrupo(i)" x-show="formPrevisaoGrupo.dias.length > 1" class="text-gray-300 hover:text-red-500 p-1">✕</button>
                   </div>
                 </template>
@@ -418,7 +509,7 @@
               <label class="block text-xs text-gray-500">Descrição</label>
               <input type="text" x-model="formDiaADia.descricao" required placeholder="ex: Arena Dois Irmãos, churrasco, restaurante..." class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500" x-text="formDiaADia.status === 'previsto' ? 'Valor esperado (R$)' : 'Valor (R$)'"></label>
-              <input type="number" step="0.01" x-model="formDiaADia.valor" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" x-moeda="formDiaADia.valor" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500">Observação (opcional)</label>
               <input type="text" x-model="formDiaADia.observacao" placeholder="ex: pago no cartão Porto" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <select x-model="formDiaADia.status" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
@@ -446,7 +537,7 @@
                   <p class="text-sm font-semibold flex items-center gap-2" :class="g.header">
                     <span class="w-2.5 h-2.5 rounded-full inline-block" :class="g.dot"></span>
                     <span x-text="g.nome"></span>
-                    <span class="text-[10px] text-gray-400 font-normal" x-text="'(' + g.itens.length + ')'"></span>
+                    <span class="text-[11px] text-gray-400 font-normal" x-text="'(' + g.itens.length + ')'"></span>
                   </p>
                   <p class="text-sm font-semibold" :class="g.header" x-text="fmtMoeda(g.totalMes) + '/mês'"></p>
                 </div>
@@ -456,9 +547,9 @@
                       <div class="min-w-0">
                         <p class="font-medium flex items-center gap-2 flex-wrap">
                           <span x-text="c.observacao || c.descricao"></span>
-                          <span class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? ('ativa · ' + c.parcelaNoMes + '/' + c.totalParcelas) : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
-                          <span x-show="c.ehNovaNoMes" class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-700">novo</span>
-                          <span x-show="g.key === 'novas' && nomeCriador(c.created_by)" class="text-[10px] px-2 py-0.5 rounded-full uppercase font-semibold bg-amber-100 text-amber-700" x-text="'adicionado por ' + nomeCriador(c.created_by)"></span>
+                          <span class="text-[11px] px-2 py-0.5 rounded-full uppercase font-semibold" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? ('ativa · ' + c.parcelaNoMes + '/' + c.totalParcelas) : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
+                          <span x-show="c.ehNovaNoMes" class="text-[11px] px-2 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-800">novo</span>
+                          <span x-show="g.key === 'novas' && nomeCriador(c.created_by)" class="text-[11px] px-2 py-0.5 rounded-full uppercase font-semibold bg-amber-100 text-amber-700" x-text="'adicionado por ' + nomeCriador(c.created_by)"></span>
                         </p>
                         <p x-show="c.observacao" class="text-xs text-gray-500 mt-0.5" x-text="'💳 ' + c.descricao"></p>
                         <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · última'))) + ' · ' + fmtMoeda(c.valor_parcela) + '/mês'"></p>
@@ -484,7 +575,7 @@
           <section class="bg-white rounded-2xl shadow-sm p-4">
             <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
               <h2 class="text-sm font-semibold text-gray-700">📊 Visão Geral</h2>
-              <span class="text-[10px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-500">Somente consulta</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-500">Somente consulta</span>
             </div>
             <p class="text-xs text-gray-500 mb-1">Clique numa célula (ou clique-e-arraste) pra somar valores, igual Excel. Clique na categoria pra recolher. Segue Compromissos fixos e Cartões automaticamente — nada é cadastrado aqui.</p>
             <p class="text-xs text-gray-400 mb-3 flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block shrink-0"></span>Verde = já pago</p>
@@ -582,11 +673,11 @@
                 <option value="__novo__">➕ Cartão novo (digitar)</option>
               </select>
               <input x-show="_cartaoParcelaSel === '__novo__'" type="text" placeholder="Nome do cartão" x-model="formParcelada.cartao" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
-              <input type="number" step="0.01" placeholder="Valor da parcela (R$)" x-model="formParcelada.valor_parcela" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" placeholder="0,00" x-moeda="formParcelada.valor_parcela" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500">Dia da compra</label>
               <input type="date" x-model="formParcelada.dataCompra" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <label class="block text-xs text-gray-500">Quantas parcelas</label>
-              <input type="number" min="1" step="1" placeholder="ex: 10" x-model="formParcelada.parcelasQtd" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <input type="number" inputmode="numeric" min="1" step="1" placeholder="ex: 10" x-model="formParcelada.parcelasQtd" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <p x-show="previewFimParcelada" class="text-xs text-gray-400" x-text="'termina em ' + nomeMes(previewFimParcelada)"></p>
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
@@ -619,7 +710,7 @@
                   </div>
 
                   <template x-if="item.tipo === 'atualizar'">
-                    <p class="text-[11px] mt-1.5 px-2 py-1 rounded-full inline-block bg-emerald-100 text-emerald-700">🔄 já cadastrada como "<span x-text="item.existenteLabel"></span>" — vai só atualizar valor/datas</p>
+                    <p class="text-[11px] mt-1.5 px-2 py-1 rounded-full inline-block bg-emerald-100 text-emerald-800">🔄 já cadastrada como "<span x-text="item.existenteLabel"></span>" — vai só atualizar valor/datas</p>
                   </template>
 
                   <template x-if="item.tipo === 'duvida'">
@@ -655,9 +746,9 @@
             </div>
             <form @submit.prevent="salvarContaFixa" class="space-y-2">
               <input type="text" placeholder="Nome (ex: Internet)" x-model="formContaFixa.name" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
-              <input type="number" step="0.01" placeholder="Valor (R$)" x-model="formContaFixa.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" placeholder="0,00" x-moeda="formContaFixa.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <label class="block text-xs text-gray-500">Dia do vencimento (1-31)</label>
-              <input type="number" min="1" max="31" x-model="formContaFixa.due_day" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <input type="number" inputmode="numeric" min="1" max="31" x-model="formContaFixa.due_day" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <label class="flex items-center gap-2 text-xs text-gray-600 py-1">
                 <input type="checkbox" x-model="formContaFixa.vence_mes_seguinte" class="rounded border-gray-300" />
                 Vencimento cai no mês seguinte ao mês de referência (ex: conta de junho com boleto vencendo em julho)
@@ -682,7 +773,7 @@
             </div>
             <form @submit.prevent="salvarTransacao" class="space-y-2">
               <input type="text" placeholder="Descrição" x-model="formTransacao.description" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
-              <input type="number" step="0.01" placeholder="Valor (R$)" x-model="formTransacao.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
+              <input type="text" placeholder="0,00" x-moeda="formTransacao.amount" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base" />
               <input type="date" x-model="formTransacao.date" required class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <select x-model="formTransacao.account" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-base">
                 <option value="">Sem conta/cartão definida</option>
@@ -767,7 +858,7 @@
             </div>
             <form @submit.prevent="salvarDuracaoCiclo" class="space-y-2">
               <p class="text-xs text-gray-500">Usada só pra estimativas enquanto você não tem 2 ciclos marcados ainda — depois disso o app calcula sozinho pelo seu histórico.</p>
-              <input type="number" min="15" max="45" x-model="formDuracaoCiclo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              <input type="number" inputmode="numeric" min="15" max="45" x-model="formDuracaoCiclo" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
               <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2 text-sm font-medium mt-2">Salvar</button>
             </form>
           </div>
@@ -795,7 +886,7 @@
           <template x-for="(nomeMes, mesIndex) in nomesMeses" :key="mesIndex">
             <div :id="'mes-card-' + mesIndex" class="bg-white rounded-2xl shadow-sm p-3">
               <p class="text-sm font-semibold mb-2" x-text="nomeMes"></p>
-              <div class="grid grid-cols-7 gap-0.5 text-[10px] text-gray-400 mb-1">
+              <div class="grid grid-cols-7 gap-0.5 text-[11px] text-gray-400 mb-1">
                 <span class="text-center">D</span><span class="text-center">S</span><span class="text-center">T</span><span class="text-center">Q</span><span class="text-center">Q</span><span class="text-center">S</span><span class="text-center">S</span>
               </div>
               <div class="grid grid-cols-7 gap-0.5">
@@ -803,7 +894,7 @@
                   <button
                     @click="selecionarDia(dia)"
                     :disabled="!dia"
-                    class="aspect-square text-[10px] rounded-md flex flex-col items-center justify-center relative"
+                    class="aspect-square text-[11px] rounded-md flex flex-col items-center justify-center relative"
                     :class="[
                       !dia ? 'invisible' : (diaSelecionado === dia ? 'bg-rose-500 text-white' : (temConflito(dia) || temConflitoFinanceiro(dia)) ? 'bg-red-100' : (!isAdmin && faseCicloDoDia(dia) === 'menstrual') ? 'bg-pink-100' : (!isAdmin && (faseCicloDoDia(dia) === 'fertil' || faseCicloDoDia(dia) === 'ovulacao')) ? 'bg-teal-50' : feriadoDoDia(dia) ? 'bg-gray-100' : 'hover:bg-gray-50'),
                       dia && ehHoje(dia) && diaSelecionado !== dia ? 'ring-2 ring-rose-400' : '',
@@ -838,7 +929,7 @@
             <div class="flex items-center justify-between mb-3">
               <p class="font-semibold flex items-center gap-2">
                 <span x-text="diaSelecionado ? fmtData(diaSelecionado) : ''"></span>
-                <span x-show="diaSelecionado && ehHoje(diaSelecionado)" class="text-[10px] bg-rose-100 text-rose-600 rounded-full px-2 py-0.5">Hoje</span>
+                <span x-show="diaSelecionado && ehHoje(diaSelecionado)" class="text-[11px] bg-rose-100 text-rose-600 rounded-full px-2 py-0.5">Hoje</span>
               </p>
               <button @click="diaSelecionado = null" class="text-gray-400">✕</button>
             </div>
@@ -899,7 +990,7 @@
                   <div class="min-w-0">
                     <p class="text-sm font-medium text-rose-700 truncate flex items-center gap-1.5">
                       <span>🧾</span><span x-text="c.observacao || c.descricao"></span>
-                      <span x-show="c.ehNovaNoMes" class="text-[10px] px-1.5 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-700">novo</span>
+                      <span x-show="c.ehNovaNoMes" class="text-[11px] px-1.5 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-800">novo</span>
                     </p>
                     <p class="text-xs text-rose-500/80" x-text="'Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas + (c.cartaoFatura ? ' · ' + c.cartaoFatura : '')"></p>
                   </div>
@@ -983,7 +1074,7 @@
           </div>
           <p class="text-xs text-gray-500 mb-3">Histórico de saldo informado manualmente (referência rápida, não é integração bancária).</p>
           <form @submit.prevent="salvarSaldo" class="flex flex-wrap items-end gap-2 mb-3">
-            <input type="number" step="0.01" placeholder="Valor (R$)" x-model="formSaldo.amount" required class="flex-1 min-w-[120px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
+            <input type="text" placeholder="0,00" x-moeda="formSaldo.amount" required class="flex-1 min-w-[120px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
             <input type="text" placeholder="Nota (opcional)" x-model="formSaldo.notes" class="flex-1 min-w-[140px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
             <button type="submit" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2 text-sm font-medium">Informar</button>
           </form>

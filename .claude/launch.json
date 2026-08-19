@@ -4,8 +4,24 @@
     {
       "name": "casa-em-dia",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["http-server", "-p", "5500", "-c-1"],
+      "runtimeArgs": [
+        "http-server",
+        "-p",
+        "5500",
+        "-c-1"
+      ],
       "port": 5500
+    },
+    {
+      "name": "casa-em-dia-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "http-server",
+        "-p",
+        "5510",
+        "-c-1"
+      ],
+      "port": 5510
     }
   ]
 }
