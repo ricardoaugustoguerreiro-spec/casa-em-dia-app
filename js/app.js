@@ -546,9 +546,6 @@ Alpine.data("appState", () => ({
       }
     },
 
-    diffDias(dataA, dataB) {
-      return (new Date(dataA) - new Date(dataB)) / 86400000;
-    },
 
     // ===================== LEITURA DE ARQUIVO (CSV + PDF) =====================
     // Tanto "Importar CSV" (contas fixas) quanto "Subir fatura" (conferência do
@@ -1125,6 +1122,59 @@ Alpine.data("appState", () => ({
 
     get totalContasFixasDoMes() {
       return this.billPaymentsDoMes.reduce((s, p) => s + Number(p.amount || 0), 0);
+    },
+
+    // A resposta que a tela do Resumo abre dizendo: quanto ainda vai sair,
+    // qual é a próxima a vencer e como está o mês (entrou, já saiu, sobra).
+    // Um lugar só pra essa conta, para o Resumo e o Painel nunca discordarem.
+    get respostaDoMes() {
+      const hoje = this.hojeISO();
+      const contas = this.billPaymentsDoMes.filter((p) => p.status === "pendente");
+      const faturas = this.faturasCartaoDoMes.filter((f) => f.status === "pendente" && Number(f.amount || 0) > 0);
+
+      const itens = [
+        ...contas.map((p) => ({ nome: this.billName(p.fixed_bill_id), valor: Number(p.amount || 0), data: p.due_date })),
+        ...faturas.map((f) => ({ nome: this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), data: f.due_date })),
+      ]
+        .filter((i) => i.data)
+        .sort((a, b) => a.data.localeCompare(b.data));
+
+      const falta = itens.reduce((s, i) => s + i.valor, 0);
+      const atrasados = itens.filter((i) => i.data < hoje);
+      const proxima = itens.find((i) => i.data >= hoje) || itens[0] || null;
+
+      const pagoContas = this.billPaymentsDoMes
+        .filter((p) => p.status === "pago")
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
+      const pagoFaturas = this.faturasCartaoDoMes
+        .filter((f) => f.status === "pago")
+        .reduce((s, f) => s + Number(f.amount || 0), 0);
+      const jaSaiu = pagoContas + pagoFaturas;
+      const entrou = this.rendaDoMes;
+
+      return {
+        falta,
+        quantidade: itens.length,
+        atrasados: atrasados.length,
+        totalAtrasado: atrasados.reduce((s, i) => s + i.valor, 0),
+        proxima: proxima ? { ...proxima, dias: this.diffDias(hoje, proxima.data) } : null,
+        jaSaiu,
+        entrou,
+        sobra: entrou - jaSaiu - falta,
+      };
+    },
+
+    // Como cada conta pendente aparece na lista: atrasada, vencendo logo ou tranquila.
+    estadoDaConta(dataVencimento) {
+      if (!dataVencimento) return { rotulo: "Sem data", classe: "bg-gray-100 text-gray-600" };
+      const dias = this.diffDias(this.hojeISO(), dataVencimento);
+      if (dias < 0) {
+        const atraso = Math.abs(dias);
+        return { rotulo: atraso === 1 ? "Atrasada 1 dia" : `Atrasada ${atraso} dias`, classe: "bg-red-50 text-red-700" };
+      }
+      if (dias === 0) return { rotulo: "Vence hoje", classe: "bg-amber-50 text-amber-700" };
+      if (dias <= 5) return { rotulo: dias === 1 ? "Vence amanhã" : `Vence em ${dias} dias`, classe: "bg-amber-50 text-amber-700" };
+      return { rotulo: "Vence " + this.fmtData(dataVencimento), classe: "bg-gray-100 text-gray-600" };
     },
 
     // contas fixas + cartões juntos, o número "cheio" do mês (igual ao que já aparece em Contas Fixas)
