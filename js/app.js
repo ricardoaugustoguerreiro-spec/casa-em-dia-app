@@ -69,6 +69,7 @@ Alpine.data("appState", () => ({
     resultadoImportacao: null,
     alvoImportacaoFixos: "", // "cartao:<id>" ou "conta:<fixed_bill_id>" — pra onde vai o valor lido
     resultadoImportacaoValor: null,
+    mostrandoAtalhos: false, // painel com a lista de atalhos de teclado
     buscaLancamentos: "", // texto da busca do Resumo
     buscaLancamentosMesTodo: false, // true = procura em todos os meses, nao so no que esta aberto
     avisos: [], // mensagens que aparecem dentro da tela, no lugar da caixa do navegador
@@ -1169,6 +1170,45 @@ Alpine.data("appState", () => ({
         entrou,
         sobra: entrou - jaSaiu - falta,
       };
+    },
+
+    // Atalhos de teclado. Valem no computador, onde a mao ja esta no teclado;
+    // no celular nao atrapalham porque so disparam fora de campo de digitacao.
+    atalhoDeTeclado(evento) {
+      const alvo = evento.target;
+      const digitando = alvo && (alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA" || alvo.tagName === "SELECT" || alvo.isContentEditable);
+      if (digitando || evento.ctrlKey || evento.metaKey || evento.altKey) return;
+      if (this.pergunta || this.criandoTransacao || this.criandoContaFixa || this.criandoParcelada) return;
+
+      const tecla = evento.key.toLowerCase();
+      if (tecla === "g") {
+        evento.preventDefault();
+        this.abrirNovaTransacao("variavel");
+      } else if (tecla === "r") {
+        evento.preventDefault();
+        this.abrirNovaTransacao("renda");
+      } else if (tecla === "c") {
+        evento.preventDefault();
+        this.abaAtual = "financeiro";
+        this.abaFinanceiro = "contas_fixas";
+      } else if (evento.key === "/") {
+        evento.preventDefault();
+        this.abaAtual = "financeiro";
+        this.abaFinanceiro = "resumo";
+        this.$nextTick(() => document.querySelector('input[type="search"]')?.focus());
+      } else if (evento.key === "?") {
+        evento.preventDefault();
+        this.mostrandoAtalhos = true;
+      }
+    },
+
+    // Renda do mes: a do Ricardo entra sozinha pela sincronizacao com o Sistema
+    // de Joias; a da Jessica sempre foi lancada na mao e ficou sem lugar quando
+    // a aba Renda saiu. Voltou aqui, junto do numero que ela alimenta.
+    get rendasDoMes() {
+      return this.transactions
+        .filter((t) => t.date.slice(0, 7) === this.mesFinanceiro && t.kind === "renda")
+        .sort((a, b) => b.date.localeCompare(a.date));
     },
 
     // Busca dos lancamentos. Sao centenas de linhas e ate agora so dava para

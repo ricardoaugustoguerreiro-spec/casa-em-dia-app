@@ -115,7 +115,7 @@
   }
 </style>
 </head>
-<body class="min-h-screen" x-data="appState" @keydown.escape.window="pergunta ? responderPergunta(false) : fecharTudo()">
+<body class="min-h-screen" x-data="appState" @keydown.escape.window="pergunta ? responderPergunta(false) : (mostrandoAtalhos ? mostrandoAtalhos = false : fecharTudo())" @keydown.window="atalhoDeTeclado($event)">
 
   <!-- LOADING -->
   <div x-show="view === 'loading'" class="flex items-center justify-center min-h-screen text-gray-400">
@@ -358,7 +358,34 @@
               </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm p-4">
-              <h2 class="text-sm font-semibold text-gray-700 mb-1">Gastos variáveis</h2>
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <h2 class="text-sm font-semibold text-gray-700">Renda do mês</h2>
+                <button @click="abrirNovaTransacao('renda')" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Renda</button>
+              </div>
+              <p class="text-2xl font-bold tracking-tight text-gray-900" x-text="fmtMoeda(rendaDoMes)"></p>
+              <p class="text-sm text-gray-500 mb-3">A das joias entra sozinha; o resto é lançado aqui.</p>
+              <div class="divide-y">
+                <template x-for="t in rendasDoMes" :key="t.id">
+                  <div class="flex items-center justify-between gap-2 py-2.5">
+                    <div class="min-w-0">
+                      <p class="font-medium truncate" x-text="t.description"></p>
+                      <p class="text-sm text-gray-500" x-text="fmtData(t.date) + (t.pessoa ? ' · ' + (t.pessoa === 'ricardo' ? 'Ricardo' : 'Jéssica') : '')"></p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <p class="font-semibold" x-text="fmtMoeda(t.amount)"></p>
+                      <button @click="abrirEditarTransacao(t)" aria-label="Editar renda" class="text-gray-500 hover:text-gray-900 p-1">✎</button>
+                    </div>
+                  </div>
+                </template>
+                <p x-show="rendasDoMes.length === 0" class="text-sm text-gray-500 py-2">Nada recebido lançado nesse mês.</p>
+              </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm p-4">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <h2 class="text-sm font-semibold text-gray-700">Gastos variáveis</h2>
+                <button @click="abrirNovaTransacao('variavel')" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Gasto</button>
+              </div>
               <p class="text-sm text-gray-500 mb-3">Cartão, variáveis e lançamentos avulsos · <span x-text="buscaLancamentosMesTodo && resumoDaBusca.buscando ? 'todos os meses' : nomeMesFinanceiro"></span></p>
 
               <div class="relative mb-2">
@@ -1125,6 +1152,8 @@
     <!-- AJUSTES -->
     <template x-if="!loadingData && abaAtual === 'ajustes'">
       <div class="space-y-6 max-w-2xl">
+
+        <p class="text-sm font-semibold uppercase tracking-wide text-gray-500">Você</p>
         <!-- PERFIL -->
         <section class="bg-white rounded-2xl shadow-sm p-4">
           <h2 class="text-sm font-semibold text-gray-700 mb-3">Seu perfil</h2>
@@ -1161,6 +1190,7 @@
           </template>
         </section>
 
+        <p class="text-sm font-semibold uppercase tracking-wide text-gray-500 pt-2">Dinheiro</p>
         <!-- SALDO INFORMADO -->
         <section class="bg-white rounded-2xl shadow-sm p-4">
           <div class="flex items-center justify-between mb-2">
@@ -1211,18 +1241,44 @@
           </div>
         </section>
 
+        <p class="text-sm font-semibold uppercase tracking-wide text-gray-500 pt-2">Seus dados e o app</p>
         <!-- BACKUP -->
         <section class="bg-white rounded-2xl shadow-sm p-4">
-          <h2 class="text-sm font-semibold text-gray-700 mb-3">Backup</h2>
+          <h2 class="text-sm font-semibold text-gray-700 mb-1">Backup</h2>
+          <p class="text-sm text-gray-600 mb-3">Não existe backup automático. Exportar de vez em quando é o que garante os dados se algo der errado — o arquivo fica no seu aparelho.</p>
           <input type="file" accept="application/json" class="hidden" x-ref="inputBackup" @change="importarBackup($event)" />
           <div class="flex flex-wrap gap-2">
             <button @click="exportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Exportar backup</button>
             <button x-show="isAdmin" @click="abrirImportarBackup" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Importar backup</button>
           </div>
         </section>
+
+        <section class="bg-white rounded-2xl shadow-sm p-4">
+          <h2 class="text-sm font-semibold text-gray-700 mb-1">Atalhos do teclado</h2>
+          <p class="text-sm text-gray-600 mb-3">No computador: <b>G</b> lança um gasto, <b>R</b> lança uma renda, <b>C</b> abre as contas do mês, <b>/</b> vai pra busca e <b>Esc</b> fecha o que estiver aberto.</p>
+          <button @click="mostrandoAtalhos = true" class="text-sm px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50">Ver a lista</button>
+        </section>
       </div>
     </template>
     </main>
+
+    <!-- lista de atalhos, chamada pela tecla ? -->
+    <div x-show="mostrandoAtalhos" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[70]" @click.self="mostrandoAtalhos = false">
+      <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold text-gray-900">Atalhos do teclado</h2>
+          <button @click="mostrandoAtalhos = false" aria-label="Fechar" class="text-gray-500 hover:text-gray-900">✕</button>
+        </div>
+        <dl class="text-sm text-gray-700 space-y-2">
+          <div class="flex items-center justify-between gap-3"><dt>Lançar um gasto</dt><dd><kbd class="px-2 py-1 rounded-lg bg-gray-100 font-mono text-[13px]">G</kbd></dd></div>
+          <div class="flex items-center justify-between gap-3"><dt>Lançar uma renda</dt><dd><kbd class="px-2 py-1 rounded-lg bg-gray-100 font-mono text-[13px]">R</kbd></dd></div>
+          <div class="flex items-center justify-between gap-3"><dt>Ir para as contas do mês</dt><dd><kbd class="px-2 py-1 rounded-lg bg-gray-100 font-mono text-[13px]">C</kbd></dd></div>
+          <div class="flex items-center justify-between gap-3"><dt>Procurar um lançamento</dt><dd><kbd class="px-2 py-1 rounded-lg bg-gray-100 font-mono text-[13px]">/</kbd></dd></div>
+          <div class="flex items-center justify-between gap-3"><dt>Fechar o que estiver aberto</dt><dd><kbd class="px-2 py-1 rounded-lg bg-gray-100 font-mono text-[13px]">Esc</kbd></dd></div>
+          <div class="flex items-center justify-between gap-3"><dt>Ver esta lista</dt><dd><kbd class="px-2 py-1 rounded-lg bg-gray-100 font-mono text-[13px]">?</kbd></dd></div>
+        </dl>
+      </div>
+    </div>
 
     <!-- avisos dentro da tela, no lugar da caixa do navegador -->
     <div x-show="avisos.length" x-cloak class="fixed inset-x-0 top-0 z-[60] p-3 flex flex-col items-center gap-2 pointer-events-none">
