@@ -69,6 +69,8 @@ Alpine.data("appState", () => ({
     resultadoImportacao: null,
     alvoImportacaoFixos: "", // "cartao:<id>" ou "conta:<fixed_bill_id>" — pra onde vai o valor lido
     resultadoImportacaoValor: null,
+    desfazerPagamento: null, // { nome, valor, item } enquanto durar a janela de arrependimento
+    _desfazerPagamentoTimer: null,
     previaParcelas: null, // { itens, cartaoNome, competencia } — revisão antes de gravar parcelas detectadas no import
     _pdfjs: null, // pdf.js carregado sob demanda (só quando sobe um PDF)
 
@@ -1133,8 +1135,8 @@ Alpine.data("appState", () => ({
       const faturas = this.faturasCartaoDoMes.filter((f) => f.status === "pendente" && Number(f.amount || 0) > 0);
 
       const itens = [
-        ...contas.map((p) => ({ nome: this.billName(p.fixed_bill_id), valor: Number(p.amount || 0), data: p.due_date })),
-        ...faturas.map((f) => ({ nome: this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), data: f.due_date })),
+        ...contas.map((p) => ({ nome: this.billName(p.fixed_bill_id), valor: Number(p.amount || 0), data: p.due_date, tipo: "conta", ref: p })),
+        ...faturas.map((f) => ({ nome: this.cartaoNome(f.cartao_id), valor: Number(f.amount || 0), data: f.due_date, tipo: "fatura", ref: f })),
       ]
         .filter((i) => i.data)
         .sort((a, b) => a.data.localeCompare(b.data));
@@ -1162,6 +1164,29 @@ Alpine.data("appState", () => ({
         entrou,
         sobra: entrou - jaSaiu - falta,
       };
+    },
+
+    // Pagar dali mesmo: quem ve "proxima: Carro, R$ 850" quer resolver ali,
+    // nao navegar ate outra aba. Toda acao de dinheiro tem 8 segundos de arrependimento.
+    async pagarItem(item) {
+      if (!item || !item.ref) return;
+      if (item.tipo === "fatura") await this.marcarFaturaPaga(item.ref);
+      else await this.marcarPago(item.ref);
+      if (item.ref.status !== "pago") return; // deu erro, nada a desfazer
+      clearTimeout(this._desfazerPagamentoTimer);
+      this.desfazerPagamento = { nome: item.nome, valor: item.valor, item };
+      this._desfazerPagamentoTimer = setTimeout(() => {
+        this.desfazerPagamento = null;
+      }, 8000);
+    },
+
+    async desfazerUltimoPagamento() {
+      const alvo = this.desfazerPagamento;
+      if (!alvo) return;
+      clearTimeout(this._desfazerPagamentoTimer);
+      this.desfazerPagamento = null;
+      if (alvo.item.tipo === "fatura") await this.marcarFaturaPaga(alvo.item.ref);
+      else await this.marcarPago(alvo.item.ref);
     },
 
     // Quanto a fatura afina quando as parcelas de agora forem acabando.

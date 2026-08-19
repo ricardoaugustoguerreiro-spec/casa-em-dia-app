@@ -1,4 +1,4 @@
-const CACHE = "casa-em-dia-v40";
+const CACHE = "casa-em-dia-v41";
 const ASSETS = [
   "./manifest.json",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-180.png",
