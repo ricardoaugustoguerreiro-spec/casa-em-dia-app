@@ -310,6 +310,9 @@
                 <span class="text-gray-500" x-text="respostaDoMes.proxima ? (respostaDoMes.proxima.dias < 0 ? ' — venceu ' + fmtData(respostaDoMes.proxima.data) : respostaDoMes.proxima.dias === 0 ? ' — vence hoje' : respostaDoMes.proxima.dias === 1 ? ' — vence amanhã' : ' — vence em ' + respostaDoMes.proxima.dias + ' dias') : ''"></span>
               </p>
 
+              <p class="mt-3 text-sm" x-show="balances.length" x-text="balances.length ? ('Na conta, informado por você em ' + fmtData(balances[0].as_of) + ': ' + fmtMoeda(balances[0].amount)) : ''"></p>
+              <p class="mt-3 text-sm text-gray-500" x-show="!balances.length">Quanto você tem na conta hoje o app não sabe — informe em Ajustes e ele aparece aqui.</p>
+
               <div class="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-200">
                 <div>
                   <p class="text-xs text-gray-500">Entrou</p>
@@ -1129,7 +1132,7 @@
           <div class="flex items-center justify-between mb-2">
             <h2 class="text-sm font-semibold text-gray-700">Saldo informado</h2>
           </div>
-          <p class="text-xs text-gray-500 mb-3">Histórico de saldo informado manualmente (referência rápida, não é integração bancária).</p>
+          <p class="text-sm text-gray-600 mb-3">O app soma o que entrou e o que saiu, mas não enxerga sua conta no banco. Informando aqui quanto tem na conta hoje, o Resumo passa a mostrar isso junto com o que ainda vai sair. Você digita — nada é lido do banco.</p>
           <form @submit.prevent="salvarSaldo" class="flex flex-wrap items-end gap-2 mb-3">
             <input type="text" placeholder="0,00" x-moeda="formSaldo.amount" required class="flex-1 min-w-[120px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
             <input type="text" placeholder="Nota (opcional)" x-model="formSaldo.notes" class="flex-1 min-w-[140px] rounded-lg border border-gray-200 px-3 py-2 text-base" />
@@ -1145,7 +1148,7 @@
                 <button @click="excluirSaldo(b.id)" class="text-xs text-red-500 shrink-0">Excluir</button>
               </div>
             </template>
-            <p x-show="balances.length === 0" class="text-xs text-gray-400 py-1">Nenhum saldo informado.</p>
+            <p x-show="balances.length === 0" class="text-sm text-gray-500 py-1">Nenhum saldo informado ainda.</p>
           </div>
         </section>
 
