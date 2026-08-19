@@ -69,6 +69,7 @@ Alpine.data("appState", () => ({
     resultadoImportacao: null,
     alvoImportacaoFixos: "", // "cartao:<id>" ou "conta:<fixed_bill_id>" — pra onde vai o valor lido
     resultadoImportacaoValor: null,
+    _TABELAS_LOCAIS: ["categories","fixedBills","billPayments","transactions","events","balances","comprasParceladas","tarefasJoias","cartoes","faturasCartao","diaADia"],
     semInternet: typeof navigator !== "undefined" && navigator.onLine === false,
     mostrandoAtalhos: false, // painel com a lista de atalhos de teclado
     buscaLancamentos: "", // texto da busca do Resumo
@@ -305,6 +306,15 @@ Alpine.data("appState", () => ({
           supabase.from("faturas_cartao").select("*"),
           supabase.from("dia_a_dia").select("*").order("data", { ascending: false }),
         ]);
+      // Sem internet o Supabase devolve tudo vazio. Nesse caso o certo e manter
+      // o que foi salvo na ultima conexao -- zerar a tela seria mentir e ainda
+      // assustar, porque "R$ 0,00" parece dado, nao falta de dado.
+      const veioVazio = !categories && !fixedBills && !transactions;
+      if (veioVazio && this._restaurarCopiaLocal()) {
+        this.semInternet = true;
+        return;
+      }
+
       this.categories = categories || [];
       this.fixedBills = fixedBills || [];
       this.billPayments = billPayments || [];
@@ -318,6 +328,46 @@ Alpine.data("appState", () => ({
       this.cartoes = cartoes || [];
       this.faturasCartao = faturasCartao || [];
       this.diaADia = diaADia || [];
+      this._guardarCopiaLocal();
+    },
+
+    // Copia local dos dados, so para o app ter o que mostrar offline.
+    // Fica no proprio aparelho; nao substitui backup nenhum.
+    _guardarCopiaLocal() {
+      try {
+        const copia = {};
+        for (const chave of this._TABELAS_LOCAIS) copia[chave] = this[chave];
+        localStorage.setItem("casa-em-dia:copia", JSON.stringify({ em: new Date().toISOString(), dados: copia }));
+      } catch (e) {
+        // aparelho sem espaco: seguir sem copia e melhor do que quebrar o app
+      }
+    },
+
+    // Quando foi a ultima vez que o app falou com o servidor.
+    copiaLocalEm() {
+      try {
+        const cru = localStorage.getItem("casa-em-dia:copia");
+        if (!cru) return null;
+        const { em } = JSON.parse(cru);
+        if (!em) return null;
+        const d = new Date(em);
+        return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} às ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      } catch (e) {
+        return null;
+      }
+    },
+
+    _restaurarCopiaLocal() {
+      try {
+        const cru = localStorage.getItem("casa-em-dia:copia");
+        if (!cru) return false;
+        const { dados } = JSON.parse(cru);
+        if (!dados) return false;
+        for (const chave of this._TABELAS_LOCAIS) this[chave] = dados[chave] || [];
+        return true;
+      } catch (e) {
+        return false;
+      }
     },
 
     async excluirTransacao(id) {
