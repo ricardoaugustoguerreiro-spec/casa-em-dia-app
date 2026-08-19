@@ -253,14 +253,14 @@
         <section class="bg-white rounded-2xl shadow-sm p-4" style="grid-column: 1 / -1;">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-semibold text-gray-700">Agenda da semana</h2>
-            <span x-show="conflitosNaSemana > 0" class="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 uppercase" x-text="conflitosNaSemana + ' dia(s) com conflito'"></span>
+            <span x-show="conflitosNaSemana > 0" class="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 uppercase" x-text="conflitosNaSemana === 1 ? '1 dia com conflito' : conflitosNaSemana + ' dias com conflito'"></span>
           </div>
           <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));">
             <template x-for="d in agendaDaSemana" :key="d.data">
               <button @click="selecionarDia(d.data)" class="text-left rounded-xl p-2.5 border" :class="(d.conflitoAgenda || d.conflitoFinanceiro) ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'">
                 <p class="text-xs font-semibold" :class="(d.conflitoAgenda || d.conflitoFinanceiro) ? 'text-red-700' : 'text-gray-700'" x-text="ehHoje(d.data) ? 'Hoje' : fmtData(d.data)"></p>
-                <p class="text-[11px] text-gray-500 mt-1" x-text="d.eventos.length + ' compromisso(s)'"></p>
-                <p class="text-[11px]" :class="d.contas.length ? 'text-red-600' : 'text-gray-400'" x-text="d.contas.length ? d.contas.length + ' conta(s) vencendo' : 'sem contas vencendo'"></p>
+                <p class="text-[11px] text-gray-500 mt-1" x-text="d.eventos.length === 1 ? '1 compromisso' : d.eventos.length + ' compromissos'"></p>
+                <p class="text-[11px]" :class="d.contas.length ? 'text-red-600' : 'text-gray-400'" x-text="d.contas.length ? (d.contas.length === 1 ? '1 conta vencendo' : d.contas.length + ' contas vencendo') : 'sem contas vencendo'"></p>
                 <p class="text-[11px] text-red-600 font-medium mt-1" x-show="d.conflitoAgenda || d.conflitoFinanceiro">⚠️ conflito</p>
               </button>
             </template>
@@ -572,8 +572,21 @@
               <h2 class="text-sm font-semibold text-gray-700">Compras parceladas no cartão</h2>
               <button @click="abrirNovaParcelada" class="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-3 py-1.5 text-xs font-medium">+ Nova</button>
             </div>
-            <p class="text-sm font-semibold text-gray-800 mb-1" x-text="'Total do mês (' + nomeMesFinanceiro + ', todos os grupos): ' + fmtMoeda(totalParceladasDoMes)"></p>
-            <p class="text-xs text-gray-400 mb-3" x-text="parceladasComProgresso.filter(c => c.status === 'ativa').length + ' parcela(s) ativa(s) neste mês, de ' + comprasParceladas.length + ' cadastrada(s). Só aparecem as que estão correndo em ' + nomeMesFinanceiro + ' — as já quitadas somem.'"></p>
+            <div class="mb-4 pb-3 border-b border-gray-200">
+              <p class="text-sm text-gray-500" x-text="'Sai em parcelas em ' + nomeMesFinanceiro"></p>
+              <p class="text-2xl font-bold tracking-tight text-gray-900" x-text="fmtMoeda(totalParceladasDoMes)"></p>
+              <p class="text-sm text-gray-600 mt-0.5" x-text="(() => { const n = parceladasComProgresso.filter(c => c.status === 'ativa').length, t = comprasParceladas.length; return (n === 1 ? '1 parcela correndo' : n + ' parcelas correndo') + ', de ' + (t === 1 ? '1 cadastrada' : t + ' cadastradas') + '. As quitadas somem da lista.'; })()"></p>
+
+              <div x-show="alivioParceladas.length" class="mt-3">
+                <p class="text-sm text-gray-500">Quando alivia</p>
+                <div class="flex flex-wrap gap-2 mt-1">
+                  <template x-for="a in alivioParceladas" :key="a.mes">
+                    <span class="text-sm px-2.5 py-1 rounded-full bg-green-50 text-green-700 font-medium"
+                          x-text="'depois de ' + a.nome + ', −' + fmtMoeda(a.valor) + '/mês'"></span>
+                  </template>
+                </div>
+              </div>
+            </div>
 
             <template x-for="g in gruposParcela" :key="g.key">
               <div class="mb-4" x-show="g.itens.length > 0">
@@ -591,15 +604,15 @@
                       <div class="min-w-0">
                         <p class="font-medium flex items-center gap-2 flex-wrap">
                           <span x-text="c.observacao || c.descricao"></span>
-                          <span class="text-[11px] px-2 py-0.5 rounded-full uppercase font-semibold" :class="c.status === 'ativa' ? 'bg-blue-100 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? ('ativa · ' + c.parcelaNoMes + '/' + c.totalParcelas) : c.status === 'concluida' ? 'concluída' : 'futura'"></span>
+                          <span class="text-[11px] px-2 py-0.5 rounded-full font-medium" :class="c.status === 'ativa' ? 'bg-blue-50 text-blue-700' : c.status === 'concluida' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'" x-text="c.status === 'ativa' ? ('Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas) : c.status === 'concluida' ? 'Concluída' : 'Ainda não começou'"></span>
                           <span x-show="c.ehNovaNoMes" class="text-[11px] px-2 py-0.5 rounded-full uppercase font-semibold bg-emerald-100 text-emerald-800">novo</span>
                           <span x-show="g.key === 'novas' && nomeCriador(c.created_by)" class="text-[11px] px-2 py-0.5 rounded-full uppercase font-semibold bg-amber-100 text-amber-700" x-text="'adicionado por ' + nomeCriador(c.created_by)"></span>
                         </p>
                         <p x-show="c.observacao" class="text-xs text-gray-500 mt-0.5" x-text="'💳 ' + c.descricao"></p>
-                        <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · última'))) + ' · ' + fmtMoeda(c.valor_parcela) + '/mês'"></p>
+                        <p class="text-xs text-gray-400" x-text="(c.cartao ? c.cartao + ' · ' : '') + (c.status === 'futura' ? ('começa em ' + fmtData(c.parcela_inicio)) : ('Parcela ' + c.parcelaNoMes + ' de ' + c.totalParcelas + (c.restantes > 0 ? ' · faltam ' + c.restantes : ' · última')))"></p>
                       </div>
                       <div class="flex items-center gap-1 shrink-0">
-                        <p class="font-medium mr-1" x-text="fmtMoeda(c.valor_parcela)"></p>
+                        <p class="font-semibold mr-1" x-text="fmtMoeda(c.valor_parcela)"></p>
                         <button @click="abrirEditarParcelada(c)" aria-label="Editar parcela" title="Editar / observação / mudar grupo" class="text-gray-400 hover:text-gray-700 p-1">✎</button>
                         <button @click="excluirParcelada(c.id)" aria-label="Excluir parcela" class="text-gray-300 hover:text-red-500 p-1">
                           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a2 2 0 012-2h0a2 2 0 012 2v2"/></svg>
@@ -610,7 +623,7 @@
                 </div>
               </div>
             </template>
-            <p x-show="comprasParceladas.length === 0" class="text-xs text-gray-400 py-2">Nenhuma compra parcelada cadastrada.</p>
+            <p x-show="comprasParceladas.length === 0" class="text-sm text-gray-500 py-2">Nenhuma compra parcelada. Elas entram sozinhas quando você importa a fatura em Compromissos fixos, ou pelo botão + Nova.</p>
           </section>
         </template>
 
@@ -621,7 +634,7 @@
               <h2 class="text-sm font-semibold text-gray-700">Visão Geral</h2>
               <span class="text-[11px] px-2 py-0.5 rounded-full uppercase bg-gray-100 text-gray-500">Somente consulta</span>
             </div>
-            <p class="text-xs text-gray-500 mb-1">Clique numa célula (ou clique-e-arraste) pra somar valores, igual Excel. Clique na categoria pra recolher. Segue Compromissos fixos e Cartões automaticamente — nada é cadastrado aqui.</p>
+            <p class="text-sm text-gray-600 mb-1">Toque numa célula (ou arraste por várias) pra somar. Toque na categoria pra recolher. Esta tela só mostra — quem manda são Compromissos fixos e os cartões.</p>
             <p class="text-xs text-gray-400 mb-3 flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block shrink-0"></span>Verde = já pago</p>
 
             <div class="flex items-center justify-between mb-3 bg-gray-50 rounded-2xl px-2 py-2" style="max-width:180px;">
@@ -631,7 +644,7 @@
             </div>
 
             <div class="rounded-xl border border-gray-100 overflow-auto select-none" style="max-height:65vh;" @mouseup.window="finalizarArrastoVisaoGeral()">
-              <table class="w-full text-xs border-collapse">
+              <table class="w-full text-[13px] border-collapse">
                 <thead>
                   <tr>
                     <th class="sticky left-0 top-0 z-40 bg-gray-900 text-white text-left px-2 sm:px-3 py-1.5 sm:py-2 font-semibold min-w-[104px] sm:min-w-[170px]">Conta</th>

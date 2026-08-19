@@ -1164,6 +1164,22 @@ Alpine.data("appState", () => ({
       };
     },
 
+    // Quanto a fatura afina quando as parcelas de agora forem acabando.
+    // Sem isso a aba só diz o que se paga hoje, nunca quando alivia.
+    get alivioParceladas() {
+      const ativas = this.parceladasComProgresso.filter((c) => c.status === "ativa" && c.parcela_fim);
+      const porMes = {};
+      for (const c of ativas) {
+        const mes = String(c.parcela_fim).slice(0, 7);
+        porMes[mes] = (porMes[mes] || 0) + Number(c.valor_parcela || 0);
+      }
+      return Object.entries(porMes)
+        .filter(([mes]) => mes >= this.mesFinanceiro)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .slice(0, 4)
+        .map(([mes, valor]) => ({ mes, nome: this.nomeMes(mes), valor }));
+    },
+
     // Como cada conta pendente aparece na lista: atrasada, vencendo logo ou tranquila.
     estadoDaConta(dataVencimento) {
       if (!dataVencimento) return { rotulo: "Sem data", classe: "bg-gray-100 text-gray-600" };
