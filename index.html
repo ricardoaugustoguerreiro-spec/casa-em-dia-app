@@ -209,6 +209,12 @@
     <!-- PAINEL DE TAREFAS (dashboard pessoal) -->
     <template x-if="!loadingData && abaAtual === 'painel'">
       <div class="grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+        <section class="bg-white rounded-2xl shadow-sm p-4 border border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-700 mb-1">Ainda vai sair esse mês</h2>
+          <p class="text-2xl font-bold tracking-tight" :class="respostaDoMes.atrasados ? 'text-red-700' : 'text-gray-900'" x-text="fmtMoeda(respostaDoMes.falta)"></p>
+          <p class="text-sm text-gray-600 mt-0.5" x-text="respostaDoMes.quantidade === 0 ? 'Nada em aberto.' : (respostaDoMes.quantidade === 1 ? '1 conta em aberto' : respostaDoMes.quantidade + ' contas em aberto')"></p>
+          <p x-show="respostaDoMes.proxima" class="text-sm text-gray-700 mt-2" x-text="respostaDoMes.proxima ? ('Próxima: ' + respostaDoMes.proxima.nome + ', ' + fmtMoeda(respostaDoMes.proxima.valor) + (respostaDoMes.proxima.dias < 0 ? ' — venceu ' + fmtData(respostaDoMes.proxima.data) : respostaDoMes.proxima.dias === 0 ? ' — hoje' : respostaDoMes.proxima.dias === 1 ? ' — amanhã' : ' — em ' + respostaDoMes.proxima.dias + ' dias')) : ''"></p>
+        </section>
         <section class="bg-white rounded-2xl shadow-sm p-4">
           <h2 class="text-sm font-semibold text-gray-700 mb-3">Tarefas de hoje</h2>
           <div class="divide-y">
@@ -218,7 +224,7 @@
                 <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase shrink-0" x-text="t.tipo"></span>
               </div>
             </template>
-            <p x-show="tarefasDeHoje.length === 0" class="text-xs text-gray-400 py-1">Nada marcado pra hoje. 🎉</p>
+            <p x-show="tarefasDeHoje.length === 0" class="text-sm text-gray-500 py-1">Nada marcado pra hoje.</p>
           </div>
         </section>
 
@@ -234,21 +240,15 @@
                 <span class="text-[11px] px-2 py-0.5 rounded-full uppercase shrink-0" :class="t.origem === 'sistema_joias' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'" x-text="t.origem === 'sistema_joias' ? 'joia' : 'agenda'"></span>
               </div>
             </template>
-            <p x-show="trabalhosEmAberto.length === 0" class="text-xs text-gray-400 py-1">Nenhum trabalho em aberto. 🎉</p>
+            <p x-show="trabalhosEmAberto.length === 0" class="text-sm text-gray-500 py-1">Nenhum trabalho em aberto.</p>
           </div>
         </section>
 
-        <section class="rounded-2xl shadow-sm p-4" :class="(conflitoHoje || temConflitoFinanceiro(hojeISO())) ? 'bg-red-50' : 'bg-white'">
-          <h2 class="text-sm font-semibold mb-1" :class="(conflitoHoje || temConflitoFinanceiro(hojeISO())) ? 'text-red-700' : 'text-gray-700'">Conflito de agenda hoje</h2>
-          <p class="text-sm" :class="(conflitoHoje || temConflitoFinanceiro(hojeISO())) ? 'text-red-700 font-medium' : 'text-gray-400'" x-text="conflitoHoje && temConflitoFinanceiro(hojeISO()) ? 'Compromissos sobrepostos e mais de uma conta vencendo hoje — revise no calendário.' : conflitoHoje ? 'Você tem compromissos com horário sobreposto hoje — revise no calendário.' : temConflitoFinanceiro(hojeISO()) ? 'Mais de uma conta/fatura vence hoje — revise no calendário.' : 'Nenhum conflito hoje.'"></p>
+        <section x-show="conflitoHoje || temConflitoFinanceiro(hojeISO())" class="rounded-2xl shadow-sm p-4 bg-red-50 border border-red-100">
+          <h2 class="text-sm font-semibold mb-1 text-red-700">Conflito de agenda hoje</h2>
+          <p class="text-sm text-red-700 font-medium" x-text="conflitoHoje && temConflitoFinanceiro(hojeISO()) ? 'Compromissos sobrepostos e mais de uma conta vencendo hoje — revise no calendário.' : conflitoHoje ? 'Compromissos com horário sobreposto hoje — revise no calendário.' : 'Mais de uma conta vence hoje — revise no calendário.'"></p>
         </section>
 
-        <section class="bg-white rounded-2xl shadow-sm p-4 border border-gray-200">
-          <h2 class="text-sm font-semibold text-gray-700 mb-1">Ainda vai sair esse mês</h2>
-          <p class="text-2xl font-bold tracking-tight" :class="respostaDoMes.atrasados ? 'text-red-700' : 'text-gray-900'" x-text="fmtMoeda(respostaDoMes.falta)"></p>
-          <p class="text-sm text-gray-600 mt-0.5" x-text="respostaDoMes.quantidade === 0 ? 'Nada em aberto.' : (respostaDoMes.quantidade === 1 ? '1 conta em aberto' : respostaDoMes.quantidade + ' contas em aberto')"></p>
-          <p x-show="respostaDoMes.proxima" class="text-sm text-gray-700 mt-2" x-text="respostaDoMes.proxima ? ('Próxima: ' + respostaDoMes.proxima.nome + ', ' + fmtMoeda(respostaDoMes.proxima.valor) + (respostaDoMes.proxima.dias < 0 ? ' — venceu ' + fmtData(respostaDoMes.proxima.data) : respostaDoMes.proxima.dias === 0 ? ' — hoje' : respostaDoMes.proxima.dias === 1 ? ' — amanhã' : ' — em ' + respostaDoMes.proxima.dias + ' dias')) : ''"></p>
-        </section>
 
         <section class="bg-white rounded-2xl shadow-sm p-4" style="grid-column: 1 / -1;">
           <div class="flex items-center justify-between mb-3">
