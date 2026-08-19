@@ -2605,6 +2605,26 @@ Alpine.data("appState", () => ({
     },
 
     // métricas de produtividade (só sobre eventos tipo = trabalho)
+    // O calendário abria com "prazos abertos / concluídos / conflitos no ano" —
+    // três números que ninguém consulta de manhã. A pergunta real é o que tem hoje.
+    get resumoDeHoje() {
+      const hoje = this.hojeISO();
+      const eventos = this.eventosDoDia(hoje).length;
+      const contas = this.contasPendentesDoDia(hoje);
+      const valor = contas.reduce((soma, c) => soma + Number(c.valor || 0), 0);
+
+      const partes = [];
+      if (eventos) partes.push(eventos === 1 ? "1 compromisso" : `${eventos} compromissos`);
+      if (contas.length) partes.push((contas.length === 1 ? "1 conta vencendo" : `${contas.length} contas vencendo`) + `, ${this.fmtMoeda(valor)}`);
+
+      return {
+        eventos,
+        contas: contas.length,
+        valor,
+        frase: partes.length ? partes.join(" · ") : "Dia livre: nada marcado e nada vencendo.",
+      };
+    },
+
     get prazosAbertos() {
       return this.events.filter((e) => e.tipo === "trabalho" && e.status_trabalho === "aberto").length;
     },

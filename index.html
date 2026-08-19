@@ -91,6 +91,11 @@
   @media (pointer: coarse), (max-width: 767px) {
     button, a[href], select, summary { min-height: 44px; min-width: 44px; }
     input:not([type=checkbox]):not([type=radio]), textarea { min-height: 44px; }
+    /* caixa de marcar: o alvo e a linha inteira, nao o quadradinho */
+    input[type=checkbox], input[type=radio] { width: 20px; height: 20px; }
+    label:has(> input[type=checkbox]), label:has(> input[type=radio]) {
+      min-height: 44px; display: flex; align-items: center; gap: 8px;
+    }
     button.flex-1, a.block { min-width: 0; }
   }
   @media (pointer: fine) and (min-width: 768px) {
@@ -895,23 +900,20 @@
       <div>
         <input type="file" accept="application/json" class="hidden" x-ref="inputPrazos" @change="importarPrazos($event)" />
 
-        <div class="grid gap-3 mb-6" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
-          <div class="rounded-2xl p-3 bg-white shadow-sm">
-            <p class="text-xs text-gray-500 mb-1">Prazos abertos</p>
-            <p class="text-lg font-semibold" x-text="prazosAbertos"></p>
+        <section class="bg-white rounded-2xl shadow-sm p-5 mb-5 border border-gray-200">
+          <p class="text-sm text-gray-500" x-text="'Hoje, ' + fmtData(hojeISO())"></p>
+          <p class="text-xl font-bold tracking-tight mt-0.5 text-gray-900" x-text="resumoDeHoje.frase"></p>
+
+          <div class="flex flex-wrap items-center gap-2 mt-3">
+            <button @click="selecionarDia(hojeISO())" class="bg-rose-500 hover:bg-rose-600 text-white rounded-xl px-4 py-2.5 text-sm font-medium">Abrir o dia de hoje</button>
+            <span x-show="conflitosNoAno > 0" class="text-sm px-3 py-1.5 rounded-full bg-red-50 text-red-700 font-medium"
+                  x-text="conflitosNoAno === 1 ? '1 dia com conflito no ano' : conflitosNoAno + ' dias com conflito no ano'"></span>
           </div>
-          <div class="rounded-2xl p-3 bg-white shadow-sm">
-            <p class="text-xs text-gray-500 mb-1">Prazos concluídos</p>
-            <p class="text-lg font-semibold" x-text="prazosConcluidos"></p>
-          </div>
-          <div class="rounded-2xl p-3 bg-red-50 shadow-sm">
-            <p class="text-xs text-red-600 mb-1">Conflitos no ano</p>
-            <p class="text-lg font-semibold text-red-700" x-text="conflitosNoAno"></p>
-          </div>
-          <div x-show="isAdmin" class="rounded-2xl p-3 bg-white shadow-sm flex items-center justify-center">
-            <button @click="abrirImportarPrazos" class="text-xs text-rose-600 font-medium">Importar prazos (JSON)</button>
-          </div>
-        </div>
+
+          <p class="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-200"
+             x-text="'Prazos de trabalho: ' + prazosAbertos + ' em aberto, ' + prazosConcluidos + ' concluídos'"></p>
+          <button x-show="isAdmin" @click="abrirImportarPrazos" class="text-sm text-rose-600 font-medium mt-1">Importar prazos (arquivo JSON)</button>
+        </section>
 
         <div class="flex items-center justify-between mb-4">
           <button @click="anoAnterior" class="px-3 py-1 rounded-full border border-gray-200 text-sm">‹</button>
@@ -1020,8 +1022,8 @@
               </p>
               <button @click="diaSelecionado = null" class="text-gray-400">✕</button>
             </div>
-            <p x-show="diaSelecionado && feriadoDoDia(diaSelecionado)" class="text-xs text-gray-500 mb-1" x-text="'Feriado: ' + (diaSelecionado ? feriadoDoDia(diaSelecionado) : '')"></p>
-            <p x-show="diaSelecionado" class="text-xs text-gray-500 mb-3" x-text="diaSelecionado ? (luaDoDia(diaSelecionado).emoji + ' ' + luaDoDia(diaSelecionado).nome) : ''"></p>
+            <p x-show="diaSelecionado && feriadoDoDia(diaSelecionado)" class="text-sm text-gray-600 mb-1" x-text="'Feriado: ' + (diaSelecionado ? feriadoDoDia(diaSelecionado) : '')"></p>
+            <p x-show="diaSelecionado" class="text-sm text-gray-600 mb-3" x-text="diaSelecionado ? (luaDoDia(diaSelecionado).emoji + ' ' + luaDoDia(diaSelecionado).nome) : ''"></p>
 
             <!-- marcação diária de menstruação (privado, só não-admin) -->
             <div x-show="!isAdmin && diaSelecionado" class="rounded-xl border border-pink-100 bg-pink-50/60 px-3 py-2 mb-3">
@@ -1054,20 +1056,25 @@
                 <div class="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2">
                   <div class="min-w-0">
                     <p class="text-sm font-medium truncate" x-text="ev.title"></p>
-                    <p class="text-xs text-gray-400" x-text="ev.starts_at.slice(11,16) + '–' + ev.ends_at.slice(11,16) + ' · ' + (ev.tipo === 'pessoal' ? 'Pessoal' : 'Trabalho') + ' · ' + (ev.conjunto ? 'Conjunto' : (ev.owner_id === uid ? 'Só meu' : 'Só dela/dele'))"></p>
+                    <p class="text-[13px] text-gray-600" x-text="ev.starts_at.slice(11,16) + '–' + ev.ends_at.slice(11,16) + ' · ' + (ev.tipo === 'pessoal' ? 'Pessoal' : 'Trabalho') + ' · ' + (ev.conjunto ? 'Conjunto' : (ev.owner_id === uid ? 'Só meu' : 'Só dela/dele'))"></p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0" x-show="podeEditar(ev)">
-                    <button @click="editarEvento(ev)" class="text-xs text-gray-500">Editar</button>
-                    <button @click="excluirEvento(ev)" class="text-xs text-red-500">Excluir</button>
+                    <button @click="editarEvento(ev)" class="text-sm text-gray-700 font-medium px-2">Editar</button>
+                    <button @click="excluirEvento(ev)" class="text-sm text-red-600 font-medium px-2">Excluir</button>
                   </div>
                 </div>
               </template>
-              <p x-show="diaSelecionado && eventosDoDia(diaSelecionado).length === 0" class="text-xs text-gray-400">Nenhum compromisso neste dia.</p>
+              <p x-show="diaSelecionado && eventosDoDia(diaSelecionado).length === 0" class="text-sm text-gray-500">Nenhum compromisso neste dia.</p>
 
               <template x-for="c in (diaSelecionado ? contasDoDia(diaSelecionado) : [])" :key="c.id">
-                <div class="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" :class="c.pago ? 'border-green-100 bg-green-50/60' : 'border-red-100 bg-red-50/60'">
-                  <p class="text-sm font-medium truncate" :class="c.pago ? 'text-green-700' : 'text-red-700'" x-text="(c.pago ? '✓ ' : '') + c.titulo"></p>
-                  <p class="text-sm font-medium shrink-0" :class="c.pago ? 'text-green-700' : 'text-red-700'" x-text="fmtMoeda(c.valor)"></p>
+                <div class="flex items-center justify-between gap-2 rounded-xl border px-3 py-2"
+                     :class="c.pago ? 'border-green-100 bg-green-50/60' : (diaSelecionado < hojeISO() ? 'border-red-100 bg-red-50/60' : 'border-gray-200 bg-white')">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium truncate" :class="c.pago ? 'text-green-700' : (diaSelecionado < hojeISO() ? 'text-red-700' : 'text-gray-900')" x-text="c.titulo"></p>
+                    <p class="text-[13px]" :class="c.pago ? 'text-green-700' : (diaSelecionado < hojeISO() ? 'text-red-700' : 'text-gray-600')"
+                       x-text="c.pago ? 'Paga' : (diaSelecionado < hojeISO() ? 'Venceu e não foi paga' : (diaSelecionado === hojeISO() ? 'Vence hoje' : 'A pagar'))"></p>
+                  </div>
+                  <p class="text-sm font-semibold shrink-0" :class="c.pago ? 'text-green-700' : (diaSelecionado < hojeISO() ? 'text-red-700' : 'text-gray-900')" x-text="fmtMoeda(c.valor)"></p>
                 </div>
               </template>
               <p x-show="diaSelecionado && temConflitoFinanceiro(diaSelecionado)" class="text-xs text-red-600 font-medium">⚠️ Mais de uma conta/fatura vencendo nesse dia.</p>
