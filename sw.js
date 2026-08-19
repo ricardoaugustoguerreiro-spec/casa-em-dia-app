@@ -1,4 +1,4 @@
-const CACHE = "casa-em-dia-v44";
+const CACHE = "casa-em-dia-v45";
 const ASSETS = [
   "./manifest.json",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-180.png",
@@ -31,6 +31,30 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Bibliotecas de fora (Tailwind, Alpine, supabase-js) -> guarda a cópia na
+  // primeira vez e serve do cache depois, atualizando por baixo. Sem isso o app
+  // simplesmente NÃO ABRE sem internet: o Alpine vem de fora e é ele que
+  // desenha a tela. O manifest promete funcionar offline; isto é o que cumpre.
+  const url = new URL(event.request.url);
+  const ehBibliotecaDeFora = url.hostname === "cdn.tailwindcss.com" || url.hostname === "esm.sh";
+  if (ehBibliotecaDeFora) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        const daRede = fetch(event.request)
+          .then((res) => {
+            if (res && res.ok) {
+              const copia = res.clone();
+              caches.open(CACHE).then((cache) => cache.put(event.request, copia));
+            }
+            return res;
+          })
+          .catch(() => cached);
+        return cached || daRede;
+      })
     );
     return;
   }

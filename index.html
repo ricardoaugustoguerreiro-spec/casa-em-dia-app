@@ -1262,6 +1262,13 @@
     </template>
     </main>
 
+    <!-- aviso de que o app esta sem internet -->
+    <div x-show="semInternet" x-cloak class="fixed inset-x-0 bottom-0 z-40 p-3 flex justify-center pointer-events-none">
+      <p class="pointer-events-auto bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-2.5 shadow-lg max-w-md">
+        Sem internet. Você está vendo os dados da última vez que o app conectou; o que mudar agora só vai pro servidor quando a conexão voltar.
+      </p>
+    </div>
+
     <!-- lista de atalhos, chamada pela tecla ? -->
     <div x-show="mostrandoAtalhos" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[70]" @click.self="mostrandoAtalhos = false">
       <div class="bg-white rounded-2xl shadow-lg w-full max-w-sm p-5">

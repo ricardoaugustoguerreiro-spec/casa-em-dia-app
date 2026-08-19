@@ -69,6 +69,7 @@ Alpine.data("appState", () => ({
     resultadoImportacao: null,
     alvoImportacaoFixos: "", // "cartao:<id>" ou "conta:<fixed_bill_id>" — pra onde vai o valor lido
     resultadoImportacaoValor: null,
+    semInternet: typeof navigator !== "undefined" && navigator.onLine === false,
     mostrandoAtalhos: false, // painel com a lista de atalhos de teclado
     buscaLancamentos: "", // texto da busca do Resumo
     buscaLancamentosMesTodo: false, // true = procura em todos os meses, nao so no que esta aberto
@@ -112,6 +113,18 @@ Alpine.data("appState", () => ({
     registrosIntimos: [],
 
     async init() {
+      // Sem internet o app continua abrindo (o service worker guarda as
+      // bibliotecas), mas os dados sao os da ultima vez que ele falou com o
+      // servidor. Dizer isso e melhor do que mostrar numero velho calado.
+      window.addEventListener("online", () => {
+        this.semInternet = false;
+        this.avisar("Internet de volta. Atualizando os dados.", "ok");
+        this.loadDashboard();
+      });
+      window.addEventListener("offline", () => {
+        this.semInternet = true;
+      });
+
       const lembrado = localStorage.getItem("casa-em-dia:lastEmail");
       if (lembrado) {
         this.email = lembrado;
