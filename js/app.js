@@ -1597,6 +1597,25 @@ Alpine.data("appState", () => ({
       return this.nomeMes(this.mesFinanceiro);
     },
 
+    // Esc fecha o que estiver aberto. Um lugar só, para não esquecer nenhum
+    // modal quando aparecer um novo.
+    fecharTudo() {
+      this.criandoContaFixa = false;
+      this.editandoContaFixa = null;
+      this.criandoTransacao = false;
+      this.editandoTransacao = null;
+      this.editandoPagamento = null;
+      this.criandoParcelada = false;
+      this.editandoParcelada = null;
+      this.editandoFatura = null;
+      this.editandoDataFatura = null;
+      this.criandoDiaADia = false;
+      this.editandoDiaADia = null;
+      this.criandoPrevisaoGrupo = false;
+      this.editandoDuracaoCiclo = false;
+      this.previaParcelas = null;
+    },
+
     nomeMes(mesISO) {
       if (!mesISO) return "—";
       const [y, m] = String(mesISO).split("-").map(Number);

@@ -110,7 +110,7 @@
   }
 </style>
 </head>
-<body class="min-h-screen" x-data="appState">
+<body class="min-h-screen" x-data="appState" @keydown.escape.window="fecharTudo()">
 
   <!-- LOADING -->
   <div x-show="view === 'loading'" class="flex items-center justify-center min-h-screen text-gray-400">
